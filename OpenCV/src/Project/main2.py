@@ -9,9 +9,20 @@ import numpy as np
 
 
 def getResizeDim(image):
+    global showA, showB
+
+    currentDisplay = displayA
+
+    if not showA and not showB:
+        print("No display showing")
+        return image
+    elif not showA:
+        currentDisplay = displayB
+
+
     # get frame dimension
-    frameWidth = displayA.winfo_width()
-    frameHeight = displayA.winfo_height()
+    frameWidth = currentDisplay.winfo_width()
+    frameHeight = currentDisplay.winfo_height()
 
     # calculate scales required to fit image in frame
     heightScale = int((frameHeight / image.shape[0]) * 100)
@@ -28,6 +39,58 @@ def getResizeDim(image):
     resizeDim = (width, height)
 
     return resizeDim
+
+def showDisplayA():
+    global showA, root, showInputBut
+
+    showA = not showA
+    if showA:
+        showInputBut.configure(text="Hide Input Display")
+    else:
+        showInputBut.configure(text="Show Input Display")
+
+    changeDisplay()
+
+
+def showDisplayB():
+    global showB, root, showOutputBut
+
+    showB = not showB
+    if showB:
+        showOutputBut.configure(text="Hide Output Display")
+    else:
+        showOutputBut.configure(text="Show Output Display")
+
+    changeDisplay()
+
+
+def changeDisplay():
+    global showA, showB, displayA, displayB, panelA, panelB
+
+    if displayA is not None:
+        displayA.destroy()
+        panelA.destroy()
+
+    if displayB is not None:
+        displayB.destroy()
+        panelB.destroy()
+
+    displayA = Frame(root, bg="#cccccc")
+    displayB = Frame(root, bg="#cccccc")
+
+    if showA and showB:
+        displayA.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.01)
+        displayB.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.51)
+    elif showA:
+        displayA.place(relwidth=0.75, relheight=0.98, relx=0.01, rely=0.01)
+    elif showB:
+        displayB.place(relwidth=0.75, relheight=0.98, relx=0.01, rely=0.01)
+
+    panelA = Label(displayA)
+    panelA.pack()
+    panelB = Label(displayB)
+    panelB.pack()
+
 
 
 # Image Operations
@@ -77,12 +140,33 @@ def cannyEdgeImg():
 
         showImage(image, False)
 
+# not really working
+def redMaskImg():
+    global currImgFile
+
+    if len(currImgFile) > 0:
+        # load image
+        image = cv2.imread(currImgFile)
+        blurred = cv2.GaussianBlur(image, (11, 11), 0)
+        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+        redUpper = (255, 200, 200)
+        redLower = (40, 10, 10)
+
+        mask = cv2.inRange(hsv, redLower, redUpper)
+        # mask = cv2.erode(mask, None, iterations=2)
+        # mask = cv2.dilate(mask, None, iterations=2)
+
+        showImage(mask, False)
+
 
 def operateImg():
     global currImgOp
 
     if currImgOp.get() == "CannyEdge Detection":
         cannyEdgeImg()
+    if currImgOp.get() == "Red Mask":
+        redMaskImg()
 
 
 # Video
@@ -111,11 +195,27 @@ def selectVideo():
                 showImage(image, True)
 
 
-def playPause():
-    global pause
-    pause = not pause
-    print("Video paused: ", pause)
+def operateVid():
+    global currVidFile, currCapture
 
+    # Create capture
+    currCapture = cv2.VideoCapture(currVidFile)
+
+    # Check capture opened and load display first frame
+    if not currCapture.isOpened():
+        print("Can't open video: ", currVidFile)
+    else:
+        playVideo()
+
+
+def playPause():
+    global pause, pauseBut
+
+    pause = not pause
+    if pause:
+        pauseBut.configure(text="I>")
+    else:
+        pauseBut.configure(text="||")
 
 def playVideo():
     global panelA, panelB, root, currCapture, currVidOp, pause, bgSubMOG, bgSubMOG2
@@ -136,6 +236,9 @@ def playVideo():
                 operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG)
             elif currVidOp.get() == 'BackgroundSub MOG2':
                 operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG2)
+            elif currVidOp.get() == 'Draw Ball Outline':
+                operatedImage = drawBallVid(frame, resizeDim, bgSubMOG)
+
 
             # resize
             image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
@@ -181,10 +284,10 @@ def backgroundSubVid(frame, resizeDim, subtractor):
 
     # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
     kernel = np.ones((5, 5), np.uint8)
-    maskOpening = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
     # resize
-    operatedImage = cv2.resize(maskOpening, resizeDim, interpolation=cv2.INTER_AREA)
+    operatedImage = cv2.resize(mask, resizeDim, interpolation=cv2.INTER_AREA)
 
     # Convert format
     operatedImage = Image.fromarray(operatedImage)
@@ -192,6 +295,40 @@ def backgroundSubVid(frame, resizeDim, subtractor):
 
     return operatedImage
 
+
+def drawBallVid(frame, resizeDim, subtractor):
+    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = subtractor.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    # convert mask back to BGR to draw outline on
+    maskBGR = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    if len(contours) > 0:
+        largestCon = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+        M = cv2.moments(largestCon)
+        center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+        cv2.circle(maskBGR, (int(x), int(y)), int(radius), (0, 255, 255), 2)
+        cv2.circle(maskBGR, center, 2, (255, 0, 0), -1)
+
+    # resize
+    operatedImage = cv2.resize(maskBGR, resizeDim, interpolation=cv2.INTER_AREA)
+
+    # Convert format
+    operatedImage = Image.fromarray(operatedImage)
+    operatedImage = ImageTk.PhotoImage(operatedImage)
+
+    return operatedImage
 
 # Initialise App
 root = Tk()
@@ -210,6 +347,9 @@ pause = False
 bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
 bgSubMOG2 = cv2.createBackgroundSubtractorMOG2()
 
+showA = True
+showB = True
+
 # calculate relative app dimensions for screen resolution
 screenHeight = root.winfo_screenheight()
 screenWidth = root.winfo_screenwidth()
@@ -223,9 +363,9 @@ root.title("Operator Tester")
 
 # create container frames
 displayA = Frame(root, bg="#cccccc")
-displayA.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.01)
-
 displayB = Frame(root, bg="#cccccc")
+
+displayA.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.01)
 displayB.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.51)
 
 displayC = Frame(root)
@@ -244,7 +384,7 @@ openImgBut.pack(side="top", pady=5)
 operateImgBut = Button(displayC, text="Operate Image", padx=10, pady=5, command=operateImg)
 operateImgBut.pack(side="top", pady=5)
 
-opImgSelect = OptionMenu(displayC, currImgOp, "CannyEdge Detection")
+opImgSelect = OptionMenu(displayC, currImgOp, "CannyEdge Detection", "Red Mask")
 opImgSelect.pack(side="top", pady=5)
 
 divider = Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -253,13 +393,23 @@ divider.pack(side="top", pady=10)
 openVidBut = Button(displayC, text="Open Video", padx=10, pady=5, command=selectVideo)
 openVidBut.pack(side="top", pady=5)
 
-operateVidBut = Button(displayC, text="Operate Video", padx=10, pady=5, command=playVideo)
+operateVidBut = Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2")
+opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline")
 opVidSelect.pack(side="top", pady=5)
 
-playBut = Button(displayC, text="I> / ||", padx=10, pady=5, command=playPause)
-playBut.pack(side="top", pady=5)
+pauseBut = Button(displayC, text="||", padx=10, pady=5, command=playPause)
+pauseBut.pack(side="top", pady=5)
+
+divider2 = Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
+divider2.pack(side="top", pady=10)
+
+showInputBut = Button(displayC, text="Hide Input Display", padx=10, pady=5, command=showDisplayA)
+showInputBut.pack(side="top", pady=5)
+
+showOutputBut = Button(displayC, text="Hide Output Display", padx=10, pady=5, command=showDisplayB)
+showOutputBut.pack(side="top", pady=5)
+
 
 root.mainloop()

@@ -2,17 +2,20 @@ from tkinter import *
 from tkinter import filedialog
 from PIL import Image, ImageTk
 import cv2
+import numpy as np
 
-def showImage(cv2Image, isA):
-    global panelA, panelB, displayA, displayB
 
+# Shared Operations
+
+
+def getResizeDim(image):
     # get frame dimension
     frameWidth = displayA.winfo_width()
-    frameHeight = displayB.winfo_height()
+    frameHeight = displayA.winfo_height()
 
     # calculate scales required to fit image in frame
-    heightScale = int((frameHeight / cv2Image.shape[0]) * 100)
-    widthScale = int((frameWidth / cv2Image.shape[1]) * 100)
+    heightScale = int((frameHeight / image.shape[0]) * 100)
+    widthScale = int((frameWidth / image.shape[1]) * 100)
 
     # select most restricting scale
     scale = heightScale
@@ -20,9 +23,20 @@ def showImage(cv2Image, isA):
         scale = widthScale
 
     # scale original image
-    width = int(cv2Image.shape[1] * scale / 100)
-    height = int(cv2Image.shape[0] * scale / 100)
+    width = int(image.shape[1] * scale / 100)
+    height = int(image.shape[0] * scale / 100)
     resizeDim = (width, height)
+
+    return resizeDim
+
+
+# Image Operations
+
+
+def showImage(cv2Image, isA):
+    global panelA, panelB
+
+    resizeDim = getResizeDim(cv2Image)
     image = cv2.resize(cv2Image, resizeDim, interpolation=cv2.INTER_AREA)
 
     # convert scale to tkinter format
@@ -30,56 +44,171 @@ def showImage(cv2Image, isA):
     image = ImageTk.PhotoImage(image)
 
     if isA:
-        # add image to frame A
+        # add image to display A
         panelA.configure(image=image)
         panelA.image = image
     else:
-        # add image to frame B
+        # add image to display B
         panelB.configure(image=image)
         panelB.image = image
 
 
-def selectFile():
-    global currFile
+def selectImage():
+    global currImgFile
 
     # open a file selection box
     filename = filedialog.askopenfilename(title="Select Image")
-    currFile = filename
+    currImgFile = filename
 
-    if len(currFile) > 0:
-        image = cv2.imread(currFile)
+    if len(currImgFile) > 0:
+        image = cv2.imread(currImgFile)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         showImage(image, True)
 
 
-def cannyEdge():
-    global currFile
-    print("Canny Edge Detection on: ", currFile)
+def cannyEdgeImg():
+    global currImgFile
 
-    if len(currFile) > 0:
+    if len(currImgFile) > 0:
         # load image
-        image = cv2.imread(currFile)
+        image = cv2.imread(currImgFile)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         image = cv2.Canny(image, 200, 250)
 
         showImage(image, False)
 
 
-def backgroundSubtract():
-    global currFile, displayB, panelB
-    print("Background Subtraction on: ", currFile)
+def operateImg():
+    global currImgOp
+
+    if currImgOp.get() == "CannyEdge Detection":
+        cannyEdgeImg()
 
 
-def operate():
-    global currOp
-
-    if currOp.get() == "CannyEdge Detection":
-        cannyEdge()
-    elif currOp.get() == "Background Subtraction":
-        backgroundSubtract()
+# Video
 
 
+def selectVideo():
+    global currVidFile, currCapture, pause
+
+    # open a file selection box
+    filename = filedialog.askopenfilename(title="Select Video")
+    currVidFile = filename
+
+    # check file was selected and set currCapture
+    if len(currVidFile) > 0:
+        print("Selected: ", currVidFile)
+        currCapture = cv2.VideoCapture(currVidFile)
+
+        # Check capture opened and load display first frame
+        if not currCapture.isOpened():
+            print("Can't open video: ", currVidFile)
+        else:
+            ret, frame = currCapture.read()
+            if ret:
+                pause = False
+                image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                showImage(image, True)
+
+
+def playPause():
+    global pause
+    pause = not pause
+    print("Video paused: ", pause)
+
+
+def playVideo():
+    global panelA, panelB, root, currCapture, currVidOp, pause, bgSubMOG, bgSubMOG2
+
+    if not pause:
+        ret, frame = currCapture.read()
+
+        if not ret:
+            print("Video End")
+        else:
+            resizeDim = getResizeDim(frame)
+            operatedImage = frame
+
+            # perform operation
+            if currVidOp.get() == 'CannyEdge Detection':
+                operatedImage = cannyEdgeVid(frame, resizeDim)
+            elif currVidOp.get() == 'BackgroundSub MOG':
+                operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG)
+            elif currVidOp.get() == 'BackgroundSub MOG2':
+                operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG2)
+
+            # resize
+            image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
+
+            # convert format
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+            image = ImageTk.PhotoImage(image=image)
+
+            # display original frame
+            panelA.image = image
+            panelA.configure(image=image)
+
+            # display operated frame
+            panelB.image = operatedImage
+            panelB.configure(image=operatedImage)
+
+            root.after(5, playVideo)
+    else:
+        root.after(500, playVideo)
+
+
+def cannyEdgeVid(frame, resizeDim):
+    # perform edge detection
+    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frameEdges = cv2.Canny(frameGray, 200, 250)
+
+    # resize
+    operatedImage = cv2.resize(frameEdges, resizeDim, interpolation=cv2.INTER_AREA)
+
+    # Convert format
+    operatedImage = Image.fromarray(operatedImage)
+    operatedImage = ImageTk.PhotoImage(operatedImage)
+
+    return operatedImage
+
+
+def backgroundSubVid(frame, resizeDim, subtractor):
+    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = subtractor.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    maskOpening = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # resize
+    operatedImage = cv2.resize(maskOpening, resizeDim, interpolation=cv2.INTER_AREA)
+
+    # Convert format
+    operatedImage = Image.fromarray(operatedImage)
+    operatedImage = ImageTk.PhotoImage(operatedImage)
+
+    return operatedImage
+
+
+# Initialise App
 root = Tk()
+
+# Global Variables
+currImgFile = ""
+currImgOp = StringVar()
+currImgOp.set("CannyEdge Detection")
+
+currVidFile = ""
+currVidOp = StringVar()
+currVidOp.set("CannyEdge Detection")
+currCapture = cv2.VideoCapture(0)
+pause = False
+
+bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
+bgSubMOG2 = cv2.createBackgroundSubtractorMOG2()
 
 # calculate relative app dimensions for screen resolution
 screenHeight = root.winfo_screenheight()
@@ -90,12 +219,7 @@ rWidth = round(screenWidth/1.8)
 rDim = str(rWidth) + "x" + str(rHeight)
 
 root.geometry(rDim)
-root.title("Image Operators")
-
-# store current file path and operation
-currFile = ""
-currOp = StringVar()
-currOp.set("CannyEdge Detection")
+root.title("Operator Tester")
 
 # create container frames
 displayA = Frame(root, bg="#cccccc")
@@ -114,13 +238,28 @@ panelB = Label(displayB)
 panelB.pack()
 
 # create controls
-openBut = Button(displayC, text="Open Image", padx=10, pady=5, command=selectFile)
-openBut.pack(side="top", pady=0)
+openImgBut = Button(displayC, text="Open Image", padx=10, pady=5, command=selectImage)
+openImgBut.pack(side="top", pady=5)
 
-opSelect = OptionMenu(displayC, currOp, "CannyEdge Detection", "Background Subtraction")
-opSelect.pack(side="top", pady=15)
+operateImgBut = Button(displayC, text="Operate Image", padx=10, pady=5, command=operateImg)
+operateImgBut.pack(side="top", pady=5)
 
-operateBut = Button(displayC, text="Operate", padx=10, pady=5, command=operate)
-operateBut.pack(side="top")
+opImgSelect = OptionMenu(displayC, currImgOp, "CannyEdge Detection")
+opImgSelect.pack(side="top", pady=5)
+
+divider = Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
+divider.pack(side="top", pady=10)
+
+openVidBut = Button(displayC, text="Open Video", padx=10, pady=5, command=selectVideo)
+openVidBut.pack(side="top", pady=5)
+
+operateVidBut = Button(displayC, text="Operate Video", padx=10, pady=5, command=playVideo)
+operateVidBut.pack(side="top", pady=5)
+
+opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2")
+opVidSelect.pack(side="top", pady=5)
+
+playBut = Button(displayC, text="I> / ||", padx=10, pady=5, command=playPause)
+playBut.pack(side="top", pady=5)
 
 root.mainloop()
