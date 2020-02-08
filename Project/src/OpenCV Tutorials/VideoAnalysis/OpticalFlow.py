@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 ## Lucas-Kanade Optical Flow - for a spaese feature set (eg- corners)
-cap = cv2.VideoCapture('..\\..\\videos\\input\\sidewallclips.mp4')
+cap = cv2.VideoCapture('videos\\project\\input\\clipout.mp4')
 
 # params for ShiTomasi corner detection
 feature_params = dict(maxCorners=100,
@@ -21,6 +21,11 @@ color = np.random.randint(0, 255, (100, 3))
 
 # Take first frame and find corners in it
 ret, old_frame = cap.read()
+
+if not ret:
+    print("cant read frame")
+    exit(0)
+
 old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
 p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
 
@@ -63,7 +68,7 @@ cv2.destroyAllWindows()
 cap.release()
 
 ## Dense optical flow - compute optical flow for all points in a frame
-cap = cv2.VideoCapture('..\\..\\videos\\input\\ball.mp4')
+cap = cv2.VideoCapture('videos\\project\\input\\clipout.mp4')
 
 ret, frame1 = cap.read()
 prvs = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)

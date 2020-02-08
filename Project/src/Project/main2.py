@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import filedialog
 from PIL import Image, ImageTk
+from sys import exit
 import cv2
 import numpy as np
 
@@ -92,7 +93,6 @@ def changeDisplay():
     panelB.pack()
 
 
-
 # Image Operations
 
 
@@ -139,6 +139,7 @@ def cannyEdgeImg():
         image = cv2.Canny(image, 200, 250)
 
         showImage(image, False)
+
 
 # not really working
 def redMaskImg():
@@ -189,17 +190,23 @@ def selectVideo():
             print("Can't open video: ", currVidFile)
         else:
             ret, frame = currCapture.read()
+
             if ret:
                 pause = False
                 image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 showImage(image, True)
 
+            currCapture.release()
+
 
 def operateVid():
-    global currVidFile, currCapture
+    global currVidFile, currCapture, trackList
 
-    # Create capture
+    # Release capture and create new one capture
     currCapture = cv2.VideoCapture(currVidFile)
+
+    # Reset trackList
+    trackList = []
 
     # Check capture opened and load display first frame
     if not currCapture.isOpened():
@@ -217,13 +224,15 @@ def playPause():
     else:
         pauseBut.configure(text="||")
 
+
 def playVideo():
-    global panelA, panelB, root, currCapture, currVidOp, pause, bgSubMOG, bgSubMOG2
+    global panelA, panelB, root, currCapture, currVidOp, pause, bgSubMOG, bgSubMOG2, trackList
 
     if not pause:
         ret, frame = currCapture.read()
 
         if not ret:
+            currCapture.release()
             print("Video End")
         else:
             resizeDim = getResizeDim(frame)
@@ -231,22 +240,28 @@ def playVideo():
 
             # perform operation
             if currVidOp.get() == 'CannyEdge Detection':
-                operatedImage = cannyEdgeVid(frame, resizeDim)
+                operatedImage = cannyEdgeVid(frame)
             elif currVidOp.get() == 'BackgroundSub MOG':
-                operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG)
+                operatedImage = backgroundSubVid(frame, bgSubMOG)
             elif currVidOp.get() == 'BackgroundSub MOG2':
-                operatedImage = backgroundSubVid(frame, resizeDim, bgSubMOG2)
+                operatedImage = backgroundSubVid(frame, bgSubMOG2)
             elif currVidOp.get() == 'Draw Ball Outline':
-                operatedImage = drawBallVid(frame, resizeDim, bgSubMOG)
+                operatedImage = drawBallVid(frame, bgSubMOG)
+            elif currVidOp.get() == 'Track Ball Flight':
+                operatedImage = trackBallVid(frame, bgSubMOG, trackList)
 
 
             # resize
             image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
+            operatedImage = cv2.resize(operatedImage, resizeDim, interpolation=cv2.INTER_AREA)
 
             # convert format
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(image)
             image = ImageTk.PhotoImage(image=image)
+
+            operatedImage = Image.fromarray(operatedImage)
+            operatedImage = ImageTk.PhotoImage(image=operatedImage)
 
             # display original frame
             panelA.image = image
@@ -261,22 +276,15 @@ def playVideo():
         root.after(500, playVideo)
 
 
-def cannyEdgeVid(frame, resizeDim):
+def cannyEdgeVid(frame):
     # perform edge detection
     frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frameEdges = cv2.Canny(frameGray, 200, 250)
 
-    # resize
-    operatedImage = cv2.resize(frameEdges, resizeDim, interpolation=cv2.INTER_AREA)
-
-    # Convert format
-    operatedImage = Image.fromarray(operatedImage)
-    operatedImage = ImageTk.PhotoImage(operatedImage)
-
-    return operatedImage
+    return frameEdges
 
 
-def backgroundSubVid(frame, resizeDim, subtractor):
+def backgroundSubVid(frame, subtractor):
     frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # Create binary mask using subtractor
@@ -286,18 +294,13 @@ def backgroundSubVid(frame, resizeDim, subtractor):
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-    # resize
-    operatedImage = cv2.resize(mask, resizeDim, interpolation=cv2.INTER_AREA)
-
-    # Convert format
-    operatedImage = Image.fromarray(operatedImage)
-    operatedImage = ImageTk.PhotoImage(operatedImage)
-
-    return operatedImage
+    return mask
 
 
-def drawBallVid(frame, resizeDim, subtractor):
-    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+def drawBallVid(frame, subtractor):
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
 
     # Create binary mask using subtractor
     mask = subtractor.apply(frameGray)
@@ -309,26 +312,52 @@ def drawBallVid(frame, resizeDim, subtractor):
     # find contours
     im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-    # convert mask back to BGR to draw outline on
-    maskBGR = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    # generate output frame
+    outputFrame = cv2.cvtColor(frameGray, cv2.COLOR_GRAY2BGR)
 
     if len(contours) > 0:
         largestCon = max(contours, key=cv2.contourArea)
         ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+
         M = cv2.moments(largestCon)
         center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
 
-        cv2.circle(maskBGR, (int(x), int(y)), int(radius), (0, 255, 255), 2)
-        cv2.circle(maskBGR, center, 2, (255, 0, 0), -1)
+        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (0, 255, 0), 1)
+        cv2.circle(outputFrame, center, 1, (255, 0, 0), -1)
 
-    # resize
-    operatedImage = cv2.resize(maskBGR, resizeDim, interpolation=cv2.INTER_AREA)
+    return outputFrame
 
-    # Convert format
-    operatedImage = Image.fromarray(operatedImage)
-    operatedImage = ImageTk.PhotoImage(operatedImage)
 
-    return operatedImage
+def trackBallVid(frame, subtractor, trackList):
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = subtractor.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    # generate output frame
+    outputFrame = cv2.cvtColor(frameGray, cv2.COLOR_GRAY2BGR)
+
+    if len(contours) > 0:
+        largestCon = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+
+        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (0, 255, 0), 1)
+        trackList.append((int(x), int(y)))
+
+    for point1, point2 in zip(trackList, trackList[1:]): 
+        cv2.line(outputFrame, point1, point2, [255, 0, 0], 2) 
+
+    return outputFrame
+
 
 # Initialise App
 root = Tk()
@@ -346,6 +375,7 @@ pause = False
 
 bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
 bgSubMOG2 = cv2.createBackgroundSubtractorMOG2()
+trackList = []
 
 showA = True
 showB = True
@@ -396,7 +426,7 @@ openVidBut.pack(side="top", pady=5)
 operateVidBut = Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline")
+opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Track Ball Flight")
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = Button(displayC, text="||", padx=10, pady=5, command=playPause)
