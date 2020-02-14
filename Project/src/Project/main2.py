@@ -264,6 +264,9 @@ def playVideo():
                 operatedImage = lineDetectVid(frame)
             elif currVidOp.get() == 'Track Ball Flight':
                 operatedImage = trackBallVid(frame, bgSubMOG, trackList)
+            elif currVidOp.get() == 'Ball In/Out':
+                operatedImage = ballInOutVid(frame, bgSubMOG)
+            
 
 
             # resize
@@ -380,7 +383,7 @@ def lineDetectVid(frame):
     output = cv2.cvtColor(output, cv2.COLOR_GRAY2RGB)
 
     # threshold on red color
-    lowColor = (0,0,75)
+    lowColor = (0,0,85)
     highColor = (50,50,135)
     mask = cv2.inRange(frame, lowColor, highColor)
 
@@ -402,6 +405,104 @@ def lineDetectVid(frame):
             cv2.drawContours(output, [c], -1, (0, 255, 0), 1)
     
     return output
+
+
+def getBallPoints(frame, subtractor):
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = subtractor.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    # create blank image
+    height, width, channels = frame.shape
+    blank = np.zeros((height, width),np.uint8)
+
+    # draw circle on image
+    if len(contours) > 0:
+        largestCon = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+
+        cv2.circle(blank, (int(x), int(y)), int(radius), 255, -1)
+        
+    # find all white points in frame
+    ballPoints = np.transpose(np.where(blank==255))
+
+    return (blank, ballPoints)
+
+
+def getLinePoints(frame):
+    # threshold on red color
+    lowColor = (0,0,85)
+    highColor = (50,50,135)
+    mask = cv2.inRange(frame, lowColor, highColor)
+
+    kernel = np.ones((5,5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # get contours
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # create blank image
+    height, width, channels = frame.shape
+    blank = np.zeros((height, width), np.uint8)
+
+    if len(contours) == 2:
+        contours = contours[0]
+    else:
+        contours = contours[1]
+    
+    # draw contour with largest area
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > 5000:
+            cv2.drawContours(blank, [c], -1, 255, -1)
+    
+    # find all white points in frame
+    linePoints = np.transpose(np.where(blank==255))
+    
+    return (blank, linePoints)
+
+
+def getDecision(ballPoints, linePoints):
+    for bPoint in ballPoints:
+        by = bPoint[0]
+        bx = bPoint[1]
+
+        for lPoint in linePoints:
+            ly = lPoint[0]
+            lx = lPoint[1]
+
+            if bx == lx and by <= ly:
+                return "Ball Out"
+
+    return "Ball In"
+
+
+def ballInOutVid(frame, subtractor):
+    # get the points and masks for ball and line
+    ballMask, ballPoints = getBallPoints(frame, subtractor)
+    lineMask, linePoints = getLinePoints(frame)
+
+    # check all points to see if a ball violates in/out term
+    decision = getDecision(ballPoints, linePoints)
+
+    # combine masks for output image
+    combinedMask = cv2.add(ballMask, lineMask)
+
+    # write decision on frame
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(combinedMask, decision, (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
+    
+    return combinedMask
 
 
 # Initialise App
@@ -471,7 +572,7 @@ openVidBut.pack(side="top", pady=5)
 operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = tk.OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight")
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", "Ball In/Out")
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
