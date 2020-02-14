@@ -1,9 +1,9 @@
-from tkinter import *
 from tkinter import filedialog
 from PIL import Image, ImageTk
 from sys import exit
 import cv2
 import numpy as np
+import tkinter as tk
 
 
 # Shared Operations
@@ -76,8 +76,8 @@ def changeDisplay():
         displayB.destroy()
         panelB.destroy()
 
-    displayA = Frame(root, bg="#cccccc")
-    displayB = Frame(root, bg="#cccccc")
+    displayA = tk.Frame(root, bg="#cccccc")
+    displayB = tk.Frame(root, bg="#cccccc")
 
     if showA and showB:
         displayA.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.01)
@@ -87,9 +87,9 @@ def changeDisplay():
     elif showB:
         displayB.place(relwidth=0.75, relheight=0.98, relx=0.01, rely=0.01)
 
-    panelA = Label(displayA)
+    panelA = tk.Label(displayA)
     panelA.pack()
-    panelB = Label(displayB)
+    panelB = tk.Label(displayB)
     panelB.pack()
 
 
@@ -135,29 +135,42 @@ def cannyEdgeImg():
     if len(currImgFile) > 0:
         # load image
         image = cv2.imread(currImgFile)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        image = cv2.Canny(image, 200, 250)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 200, 250)
 
-        showImage(image, False)
+        showImage(edges, False)
 
 
-# not really working
-def redMaskImg():
+def lineDetectImg():
     global currImgFile
 
     if len(currImgFile) > 0:
         # load image
         image = cv2.imread(currImgFile)
-        blurred = cv2.GaussianBlur(image, (11, 11), 0)
-        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        output = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        redUpper = (255, 200, 200)
-        redLower = (40, 10, 10)
+        # threshold on red color
+        lowColor = (0,0,75)
+        highColor = (50,50,135)
+        mask = cv2.inRange(image, lowColor, highColor)
 
-        mask = cv2.inRange(hsv, redLower, redUpper)
-        # mask = cv2.erode(mask, None, iterations=2)
-        # mask = cv2.dilate(mask, None, iterations=2)
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
+        # get contours
+        contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) == 2:
+            contours = contours[0]
+        else:
+            contours = contours[1]
+        
+        # draw contour with largest area
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 5000:
+                cv2.drawContours(output, [c], -1, (0, 255, 0), 2)
+        
         showImage(mask, False)
 
 
@@ -166,8 +179,8 @@ def operateImg():
 
     if currImgOp.get() == "CannyEdge Detection":
         cannyEdgeImg()
-    if currImgOp.get() == "Red Mask":
-        redMaskImg()
+    if currImgOp.get() == "Line Detect":
+        lineDetectImg()
 
 
 # Video
@@ -247,6 +260,8 @@ def playVideo():
                 operatedImage = backgroundSubVid(frame, bgSubMOG2)
             elif currVidOp.get() == 'Draw Ball Outline':
                 operatedImage = drawBallVid(frame, bgSubMOG)
+            elif currVidOp.get() == 'Draw Line Outline':
+                operatedImage = lineDetectVid(frame)
             elif currVidOp.get() == 'Track Ball Flight':
                 operatedImage = trackBallVid(frame, bgSubMOG, trackList)
 
@@ -359,16 +374,46 @@ def trackBallVid(frame, subtractor, trackList):
     return outputFrame
 
 
+def lineDetectVid(frame):
+    # create output frame
+    output = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    output = cv2.cvtColor(output, cv2.COLOR_GRAY2RGB)
+
+    # threshold on red color
+    lowColor = (0,0,75)
+    highColor = (50,50,135)
+    mask = cv2.inRange(frame, lowColor, highColor)
+
+    kernel = np.ones((5,5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # get contours
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours) == 2:
+        contours = contours[0]
+    else:
+        contours = contours[1]
+    
+    # draw contour with largest area
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > 5000:
+            cv2.drawContours(output, [c], -1, (0, 255, 0), 1)
+    
+    return output
+
+
 # Initialise App
-root = Tk()
+root = tk.Tk()
 
 # Global Variables
 currImgFile = ""
-currImgOp = StringVar()
-currImgOp.set("CannyEdge Detection")
+currImgOp = tk.StringVar()
+currImgOp.set("Line Detect")
 
 currVidFile = ""
-currVidOp = StringVar()
+currVidOp = tk.StringVar()
 currVidOp.set("CannyEdge Detection")
 currCapture = cv2.VideoCapture(0)
 pause = False
@@ -392,53 +437,53 @@ root.geometry(rDim)
 root.title("Operator Tester")
 
 # create container frames
-displayA = Frame(root, bg="#cccccc")
-displayB = Frame(root, bg="#cccccc")
+displayA = tk.Frame(root, bg="#cccccc")
+displayB = tk.Frame(root, bg="#cccccc")
 
 displayA.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.01)
 displayB.place(relwidth=0.75, relheight=0.48, relx=0.01, rely=0.51)
 
-displayC = Frame(root)
+displayC = tk.Frame(root)
 displayC.place(relwidth=0.23, relheight=0.98, relx=0.76, rely=0.01)
 
 # initialise labels to hold images
-panelA = Label(displayA)
+panelA = tk.Label(displayA)
 panelA.pack()
-panelB = Label(displayB)
+panelB = tk.Label(displayB)
 panelB.pack()
 
 # create controls
-openImgBut = Button(displayC, text="Open Image", padx=10, pady=5, command=selectImage)
+openImgBut = tk.Button(displayC, text="Open Image", padx=10, pady=5, command=selectImage)
 openImgBut.pack(side="top", pady=5)
 
-operateImgBut = Button(displayC, text="Operate Image", padx=10, pady=5, command=operateImg)
+operateImgBut = tk.Button(displayC, text="Operate Image", padx=10, pady=5, command=operateImg)
 operateImgBut.pack(side="top", pady=5)
 
-opImgSelect = OptionMenu(displayC, currImgOp, "CannyEdge Detection", "Red Mask")
+opImgSelect = tk.OptionMenu(displayC, currImgOp, "CannyEdge Detection", "Red Mask", "Line Detect")
 opImgSelect.pack(side="top", pady=5)
 
-divider = Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
+divider = tk.Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
 divider.pack(side="top", pady=10)
 
-openVidBut = Button(displayC, text="Open Video", padx=10, pady=5, command=selectVideo)
+openVidBut = tk.Button(displayC, text="Open Video", padx=10, pady=5, command=selectVideo)
 openVidBut.pack(side="top", pady=5)
 
-operateVidBut = Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
+operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Track Ball Flight")
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight")
 opVidSelect.pack(side="top", pady=5)
 
-pauseBut = Button(displayC, text="||", padx=10, pady=5, command=playPause)
+pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
 pauseBut.pack(side="top", pady=5)
 
-divider2 = Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
+divider2 = tk.Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
 divider2.pack(side="top", pady=10)
 
-showInputBut = Button(displayC, text="Hide Input Display", padx=10, pady=5, command=showDisplayA)
+showInputBut = tk.Button(displayC, text="Hide Input Display", padx=10, pady=5, command=showDisplayA)
 showInputBut.pack(side="top", pady=5)
 
-showOutputBut = Button(displayC, text="Hide Output Display", padx=10, pady=5, command=showDisplayB)
+showOutputBut = tk.Button(displayC, text="Hide Output Display", padx=10, pady=5, command=showDisplayB)
 showOutputBut.pack(side="top", pady=5)
 
 
