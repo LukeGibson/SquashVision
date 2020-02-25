@@ -4,6 +4,7 @@ from sys import exit
 import cv2
 import numpy as np
 import tkinter as tk
+import time
 
 
 # Shared Operations
@@ -40,6 +41,7 @@ def getResizeDim(image):
     resizeDim = (width, height)
 
     return resizeDim
+
 
 def showDisplayA():
     global showA, root, showInputBut
@@ -93,9 +95,6 @@ def changeDisplay():
     panelB.pack()
 
 
-# Image Operations
-
-
 def showImage(cv2Image, isA):
     global panelA, panelB
 
@@ -108,83 +107,15 @@ def showImage(cv2Image, isA):
 
     if isA:
         # add image to display A
+        print("display in A")
         panelA.configure(image=image)
         panelA.image = image
     else:
         # add image to display B
+        print("display in B")
         panelB.configure(image=image)
         panelB.image = image
-
-
-def selectImage():
-    global currImgFile
-
-    # open a file selection box
-    filename = filedialog.askopenfilename(title="Select Image")
-    currImgFile = filename
-
-    if len(currImgFile) > 0:
-        image = cv2.imread(currImgFile)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        showImage(image, True)
-
-
-def cannyEdgeImg():
-    global currImgFile
-
-    if len(currImgFile) > 0:
-        # load image
-        image = cv2.imread(currImgFile)
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 200, 250)
-
-        showImage(edges, False)
-
-
-def lineDetectImg():
-    global currImgFile
-
-    if len(currImgFile) > 0:
-        # load image
-        image = cv2.imread(currImgFile)
-        output = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # threshold on red color
-        lowColor = (0,0,75)
-        highColor = (50,50,135)
-        mask = cv2.inRange(image, lowColor, highColor)
-
-        kernel = np.ones((5,5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-        # get contours
-        contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if len(contours) == 2:
-            contours = contours[0]
-        else:
-            contours = contours[1]
-        
-        # draw contour with largest area
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area > 5000:
-                cv2.drawContours(output, [c], -1, (0, 255, 0), 2)
-        
-        showImage(mask, False)
-
-
-def operateImg():
-    global currImgOp
-
-    if currImgOp.get() == "CannyEdge Detection":
-        cannyEdgeImg()
-    if currImgOp.get() == "Line Detect":
-        lineDetectImg()
-
-
-# Video
-
+    
 
 def selectVideo():
     global currVidFile, currCapture, pause
@@ -213,17 +144,46 @@ def selectVideo():
 
 
 def operateVid():
-    global currVidFile, currCapture, trackList, currVidOp
+    global currVidFile, currCapture, bgSubMOG, currVidOp, trackList, predPoints, predPointsIndex, trackPoints
 
     # Release capture and create new one capture
     currCapture = cv2.VideoCapture(currVidFile)
 
-    # Reset trackList
+    # Reset tracks
     trackList = []
+
+    trackPoints = []
+    predPoints = []
+    predPointsIndex = 0
+    bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
 
     # Check capture opened and load display first frame
     if not currCapture.isOpened():
         print("Can't open video: ", currVidFile)
+
+    elif currVidOp.get() == "Draw Ball Full":
+        print("Generating Ball Track")
+
+        # Display "generating track" frame
+        generatingFrame = np.zeros((1080,1920,3), np.uint8)
+    
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(generatingFrame, "Generating Track", (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
+        showImage(generatingFrame, False)
+
+        # get the points
+        trackPoints = generateTrack()
+
+        print("Predicting Gaps")
+        predPoints = fillTrackGaps(trackPoints)
+
+        # restart the capture for the display
+        currCapture.release()
+        currCapture = cv2.VideoCapture(currVidFile)
+
+        print("Drawing Ball")
+        playVideo()
+
     else:
         playVideo()
 
@@ -239,7 +199,7 @@ def playPause():
 
 
 def playVideo():
-    global panelA, panelB, root, currCapture, currVidOp, pause, bgSubMOG, bgSubMOG2, trackList
+    global panelA, panelB, root, currCapture, currVidOp, pause
 
     if not pause:
         ret, frame = currCapture.read()
@@ -252,20 +212,14 @@ def playVideo():
             operatedImage = frame
 
             # perform operation
-            if currVidOp.get() == 'CannyEdge Detection':
-                operatedImage = cannyEdgeVid(frame)
-            elif currVidOp.get() == 'BackgroundSub MOG':
-                operatedImage = backgroundSubVid(frame, bgSubMOG)
-            elif currVidOp.get() == 'BackgroundSub MOG2':
-                operatedImage = backgroundSubVid(frame, bgSubMOG2)
-            elif currVidOp.get() == 'Draw Ball Outline':
-                operatedImage = drawBallVid(frame, bgSubMOG)
+            if currVidOp.get() == 'Draw Ball Outline':
+                operatedImage = drawBallVid(frame)
             elif currVidOp.get() == 'Draw Line Outline':
                 operatedImage = lineDetectVid(frame)
             elif currVidOp.get() == 'Track Ball Flight':
-                operatedImage = trackBallVid(frame, bgSubMOG, trackList)
-            elif currVidOp.get() == 'Ball In/Out':
-                operatedImage = ballInOutVid(frame, bgSubMOG)
+                operatedImage = trackBallVid(frame)
+            elif currVidOp.get() == 'Draw Ball Full':
+                operatedImage = drawBallFullVid(frame)
             
 
             # resize
@@ -293,34 +247,170 @@ def playVideo():
         root.after(500, playVideo)
 
 
-def cannyEdgeVid(frame):
-    # perform edge detection
-    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    frameEdges = cv2.Canny(frameGray, 200, 250)
+# def genTrackVid(frame):
+#     global currCapture, bgSubMOG
 
-    return frameEdges
+#     # blur and convert to grayscale
+#     frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+#     frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+#     # Create binary mask using subtractor
+#     mask = bgSubMOG.apply(frameGray)
+
+#     # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+#     kernel = np.ones((5, 5), np.uint8)
+#     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+#     # generate output image
+#     height, width = frame.shape[:2]
+#     outputFrame = np.zeros((height,width,3), np.uint8)
+
+#     # find contours
+#     im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+#     # if mask is not empty then find the ball center and radius and add this to the track - else add the 
+#     if len(contours) > 0:
+#         largestCon = max(contours, key=cv2.contourArea)
+#         ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+#         cv2.circle(outputFrame, (int(x),int(y)), int(radius), (225, 0, 0), -1)
+#         point = ((int(x), int(y), int(radius)))
+#     else:
+#         point = (-1,-1,0)
+
+#     font = cv2.FONT_HERSHEY_SIMPLEX
+#     cv2.putText(outputFrame, "Generating Track", (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
+
+#     return (outputFrame, point)
 
 
-def backgroundSubVid(frame, subtractor):
-    frameGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # Create binary mask using subtractor
-    mask = subtractor.apply(frameGray)
+# generates a list of detected ball for each frame
+def generateTrack():
+    global currCapture, bgSubMOG
 
-    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # for each frame holds (x, y, radius) of detected ball - if no detection then holds (-1, -1, 0)
+    trackPoints = []
 
-    return mask
+    while(True):
+        ret, frame = currCapture.read()
+
+        if ret == False:
+            break
+        else:
+            # blur and convert to grayscale
+            frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+            frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+            # Create binary mask using subtractor
+            mask = bgSubMOG.apply(frameGray)
+
+            # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+            kernel = np.ones((5, 5), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+            # find contours
+            im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+            # if mask is not empty then find the ball center and radius and add this to the track - else add the 
+            if len(contours) > 0:
+                largestCon = max(contours, key=cv2.contourArea)
+                ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+                trackPoints.append((int(x), int(y), int(radius)))
+            else:
+                trackPoints.append((-1, -1, 0))
+
+    return trackPoints
 
 
-def drawBallVid(frame, subtractor):
+def fillTrackGaps(trackPoints):
+    cleanTrackPoints = []
+    cleanTrackPoints.append(trackPoints[0])
+
+    # if either neighbouring point doesn't have a ball detection assume the detection in current point is poor
+    for i in range(1, len(trackPoints) - 1):
+        x, y, r = trackPoints[i]
+
+        if trackPoints[i-1] != (-1,-1,0) and trackPoints[i+1] != (-1,-1,0):
+            cleanTrackPoints.append((x,y,r))
+        else:
+            cleanTrackPoints.append((-1,-1,0))
+    
+    cleanTrackPoints.append(trackPoints[-1])
+
+    # find all sections with a missing point
+    missingSections = [[]]
+    sectionCount = 0
+
+    for i in range(len(cleanTrackPoints) - 1):
+        x, y, r = cleanTrackPoints[i]
+        pX, pY, pR = cleanTrackPoints[i - 1]
+        nX, nY, nR = cleanTrackPoints[i + 1]
+
+        # adds missing points to section
+        if x < 0:
+            missingSections[sectionCount].append((x,y,r,i))
+        # adds real value far to end of section and increments section count
+        elif pX < 0:
+            missingSections[sectionCount].append((x,y,r,i))
+            sectionCount += 1
+        # adds real value at start of section
+        elif nX < 0:
+            missingSections.append([])
+            missingSections[sectionCount].append((x,y,r,i))
+    
+    # predict values for points in the missing sections
+    for section in missingSections:
+        # excludes the first points where ball hasn't been found yet
+        if section[0][0] != -1 and section[-1][0] != -1:
+
+            startX, startY, startR, startPos = section[0]
+            endX, endY, endR, endPos = section[-1]
+            numMissing = len(section) - 2
+
+            xStep = (endX - startX) / (numMissing + 1)
+            yStep = (endY - startY) / (numMissing + 1)
+            
+            # calculate ball position at even spacing for missing values (assumes a stright line)
+            for i in range(1, len(section) - 1):
+                pos = section[i][3]
+                missingX = int(startX + (i * xStep))
+                missingY = int(startY + (i * yStep))
+                # assign predicted radius based on which end of the gap current point is closest too
+                if i*2 <= numMissing:
+                    section[i] = (missingX, missingY, startR)
+                else:
+                    section[i] = (missingX, missingY, endR)
+                
+                # rewrite missing point in full list
+                cleanTrackPoints[pos] = section[i]
+                      
+    return cleanTrackPoints
+
+
+# uses the pre calculated predicted ball points - 
+def drawBallFullVid(frame):
+    global predPoints, predPointsIndex
+
+    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    x, y, r = predPoints[predPointsIndex]
+
+    if x > -1:
+        cv2.circle(outputFrame, (x,y), r, (0, 255, 0), 1)
+
+    predPointsIndex += 1
+
+    return outputFrame
+        
+
+def drawBallVid(frame):
+    global bgSubMOG
+
     # blur and convert to grayscale
     frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
     frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
 
     # Create binary mask using subtractor
-    mask = subtractor.apply(frameGray)
+    mask = bgSubMOG.apply(frameGray)
 
     # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
     kernel = np.ones((5, 5), np.uint8)
@@ -345,13 +435,15 @@ def drawBallVid(frame, subtractor):
     return outputFrame
 
 
-def trackBallVid(frame, subtractor, trackList):
+def trackBallVid(frame):
+    global bgSubMOG, trackList
+
     # blur and convert to grayscale
     frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
     frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
 
     # Create binary mask using subtractor
-    mask = subtractor.apply(frameGray)
+    mask = bgSubMOG.apply(frameGray)
 
     # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
     kernel = np.ones((5, 5), np.uint8)
@@ -367,7 +459,7 @@ def trackBallVid(frame, subtractor, trackList):
         largestCon = max(contours, key=cv2.contourArea)
         ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
 
-        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (0, 255, 0), 1)
+        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (255, 255, 255), 1)
         trackList.append((int(x), int(y)))
 
     for point1, point2 in zip(trackList, trackList[1:]): 
@@ -406,121 +498,21 @@ def lineDetectVid(frame):
     return output
 
 
-def getBallPoints(frame, subtractor):
-    # blur and convert to grayscale
-    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
-    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
-
-    # Create binary mask using subtractor
-    mask = subtractor.apply(frameGray)
-
-    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-
-    # find contours
-    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
-    # create blank image
-    height, width, channels = frame.shape
-    blank = np.zeros((height, width),np.uint8)
-
-    # draw circle on image
-    if len(contours) > 0:
-        largestCon = max(contours, key=cv2.contourArea)
-        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
-
-        cv2.circle(blank, (int(x), int(y)), int(radius), 255, -1)
-        
-    # find all white points in frame
-    ballPoints = np.transpose(np.where(blank==255))
-
-    return (blank, ballPoints)
-
-
-def getLinePoints(frame):
-    # threshold on red color
-    lowColor = (0,0,85)
-    highColor = (50,50,135)
-    mask = cv2.inRange(frame, lowColor, highColor)
-
-    kernel = np.ones((5,5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    # get contours
-    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # create blank image
-    height, width, channels = frame.shape
-    blank = np.zeros((height, width), np.uint8)
-
-    if len(contours) == 2:
-        contours = contours[0]
-    else:
-        contours = contours[1]
-    
-    # draw contour with largest area
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area > 5000:
-            cv2.drawContours(blank, [c], -1, 255, -1)
-    
-    # find all white points in frame
-    linePoints = np.transpose(np.where(blank==255))
-    
-    return (blank, linePoints)
-
-
-def getDecision(ballPoints, linePoints):
-    for bPoint in ballPoints:
-        by = bPoint[0]
-        bx = bPoint[1]
-
-        for lPoint in linePoints:
-            ly = lPoint[0]
-            lx = lPoint[1]
-
-            if bx == lx and by <= ly:
-                return "Ball Out"
-
-    return "Ball In"
-
-
-def ballInOutVid(frame, subtractor):
-    # get the points and masks for ball and line
-    ballMask, ballPoints = getBallPoints(frame, subtractor)
-    lineMask, linePoints = getLinePoints(frame)
-
-    # check all points to see if a ball violates in/out term
-    decision = getDecision(ballPoints, linePoints)
-
-    # combine masks for output image
-    combinedMask = cv2.add(ballMask, lineMask)
-
-    # write decision on frame
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(combinedMask, decision, (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
-    
-    return combinedMask
-
-
 # Initialise App
 root = tk.Tk()
 
 # Global Variables
-currImgFile = ""
-currImgOp = tk.StringVar()
-currImgOp.set("Line Detect")
-
 currVidFile = ""
 currVidOp = tk.StringVar()
-currVidOp.set("Ball Detect Full")
+currVidOp.set("Draw Ball Full")
 currCapture = cv2.VideoCapture(0)
 pause = False
 
 bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
-bgSubMOG2 = cv2.createBackgroundSubtractorMOG2()
 trackList = []
+trackPoints = []
+predPoints = []
+predPointsIndex = 0
 
 showA = True
 showB = True
@@ -553,25 +545,13 @@ panelB = tk.Label(displayB)
 panelB.pack()
 
 # create controls
-openImgBut = tk.Button(displayC, text="Open Image", padx=10, pady=5, command=selectImage)
-openImgBut.pack(side="top", pady=5)
-
-operateImgBut = tk.Button(displayC, text="Operate Image", padx=10, pady=5, command=operateImg)
-operateImgBut.pack(side="top", pady=5)
-
-opImgSelect = tk.OptionMenu(displayC, currImgOp, "CannyEdge Detection", "Red Mask", "Line Detect")
-opImgSelect.pack(side="top", pady=5)
-
-divider = tk.Label(displayC, text="~~~~~~~~~~~~~~~~~~~~~~~~")
-divider.pack(side="top", pady=10)
-
 openVidBut = tk.Button(displayC, text="Open Video", padx=10, pady=5, command=selectVideo)
 openVidBut.pack(side="top", pady=5)
 
 operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = tk.OptionMenu(displayC, currVidOp, "CannyEdge Detection", "BackgroundSub MOG", "BackgroundSub MOG2", "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", "Ball In/Out")
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", 'Draw Ball Full')
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
