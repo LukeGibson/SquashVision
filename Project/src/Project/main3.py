@@ -7,7 +7,7 @@ import tkinter as tk
 import time
 
 
-# Shared Operations
+# Display Helper Functions
 
 
 def getResizeDim(image):
@@ -107,12 +107,10 @@ def showImage(cv2Image, isA):
 
     if isA:
         # add image to display A
-        print("display in A")
         panelA.configure(image=image)
         panelA.image = image
     else:
         # add image to display B
-        print("display in B")
         panelB.configure(image=image)
         panelB.image = image
     
@@ -160,30 +158,6 @@ def operateVid():
     # Check capture opened and load display first frame
     if not currCapture.isOpened():
         print("Can't open video: ", currVidFile)
-
-    elif currVidOp.get() == "Draw Ball Full":
-        print("Generating Ball Track")
-
-        # Display "generating track" frame
-        generatingFrame = np.zeros((1080,1920,3), np.uint8)
-    
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(generatingFrame, "Generating Track", (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
-        showImage(generatingFrame, False)
-
-        # get the points
-        trackPoints = generateTrack()
-
-        print("Predicting Gaps")
-        predPoints = fillTrackGaps(trackPoints)
-
-        # restart the capture for the display
-        currCapture.release()
-        currCapture = cv2.VideoCapture(currVidFile)
-
-        print("Drawing Ball")
-        playVideo()
-
     else:
         playVideo()
 
@@ -199,14 +173,30 @@ def playPause():
 
 
 def playVideo():
-    global panelA, panelB, root, currCapture, currVidOp, pause
+    global panelA, panelB, root, currCapture, currVidOp, pause, predPoints, predPointsIndex, trackPoints
 
     if not pause:
         ret, frame = currCapture.read()
 
         if not ret:
             currCapture.release()
-            print("Video End")
+            print("Capture Ends")
+
+            # If finishing generate track then draw the new track
+            if currVidOp.get() == 'Draw Ball Prediction':
+                # update predPoints now trackPoints are populated
+                print("Predicting Points")
+                predPoints = fillTrackGaps(trackPoints)
+
+                # reset capture and call playVideo now as display predPoints options
+                print("Drawing Ball Full")
+                currVidOp.set('Draw Ball Prediction 2')
+                currCapture = cv2.VideoCapture(currVidFile)
+                playVideo()
+            # reset currOperation to stage 1 of "Draw Ball Predicition"
+            elif currVidOp.get() == 'Draw Ball Prediction 2':
+                currVidOp.set('Draw Ball Prediction')
+            
         else:
             resizeDim = getResizeDim(frame)
             operatedImage = frame
@@ -218,9 +208,10 @@ def playVideo():
                 operatedImage = lineDetectVid(frame)
             elif currVidOp.get() == 'Track Ball Flight':
                 operatedImage = trackBallVid(frame)
-            elif currVidOp.get() == 'Draw Ball Full':
+            elif currVidOp.get() == 'Draw Ball Prediction':
+                operatedImage = genTrackVid(frame)
+            elif currVidOp.get() == 'Draw Ball Prediction 2':
                 operatedImage = drawBallFullVid(frame)
-            
 
             # resize
             image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
@@ -247,79 +238,40 @@ def playVideo():
         root.after(500, playVideo)
 
 
-# def genTrackVid(frame):
-#     global currCapture, bgSubMOG
+def genTrackVid(frame):
+    global currCapture, bgSubMOG, trackPoints
 
-#     # blur and convert to grayscale
-#     frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
-#     frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
 
-#     # Create binary mask using subtractor
-#     mask = bgSubMOG.apply(frameGray)
+    # Create binary mask using subtractor
+    mask = bgSubMOG.apply(frameGray)
 
-#     # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
-#     kernel = np.ones((5, 5), np.uint8)
-#     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-#     # generate output image
-#     height, width = frame.shape[:2]
-#     outputFrame = np.zeros((height,width,3), np.uint8)
+    # generate output image
+    height, width = frame.shape[:2]
+    outputFrame = np.zeros((height,width), np.uint8)
 
-#     # find contours
-#     im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-#     # if mask is not empty then find the ball center and radius and add this to the track - else add the 
-#     if len(contours) > 0:
-#         largestCon = max(contours, key=cv2.contourArea)
-#         ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
-#         cv2.circle(outputFrame, (int(x),int(y)), int(radius), (225, 0, 0), -1)
-#         point = ((int(x), int(y), int(radius)))
-#     else:
-#         point = (-1,-1,0)
+    # if mask is not empty then find the ball center and radius and add this to the track - else add the 
+    if len(contours) > 0:
+        largestCon = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
+        cv2.circle(outputFrame, (int(x),int(y)), int(radius), 255, -1)
+        trackPoints.append((int(x), int(y), int(radius)))
+    else:
+        trackPoints.append((-1,-1,0))
 
-#     font = cv2.FONT_HERSHEY_SIMPLEX
-#     cv2.putText(outputFrame, "Generating Track", (20,70), font, 2, (255,255,255), 2, cv2.LINE_AA)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(outputFrame, "Generating Track", (20,70), font, 2, 255, 2, cv2.LINE_AA)
 
-#     return (outputFrame, point)
-
-
-
-# generates a list of detected ball for each frame
-def generateTrack():
-    global currCapture, bgSubMOG
-
-    # for each frame holds (x, y, radius) of detected ball - if no detection then holds (-1, -1, 0)
-    trackPoints = []
-
-    while(True):
-        ret, frame = currCapture.read()
-
-        if ret == False:
-            break
-        else:
-            # blur and convert to grayscale
-            frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
-            frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
-
-            # Create binary mask using subtractor
-            mask = bgSubMOG.apply(frameGray)
-
-            # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
-            kernel = np.ones((5, 5), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-
-            # find contours
-            im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
-            # if mask is not empty then find the ball center and radius and add this to the track - else add the 
-            if len(contours) > 0:
-                largestCon = max(contours, key=cv2.contourArea)
-                ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
-                trackPoints.append((int(x), int(y), int(radius)))
-            else:
-                trackPoints.append((-1, -1, 0))
-
-    return trackPoints
+    return outputFrame
 
 
 def fillTrackGaps(trackPoints):
@@ -387,7 +339,7 @@ def fillTrackGaps(trackPoints):
     return cleanTrackPoints
 
 
-# uses the pre calculated predicted ball points - 
+# uses the pre calculated predicted ball points
 def drawBallFullVid(frame):
     global predPoints, predPointsIndex
 
@@ -420,7 +372,7 @@ def drawBallVid(frame):
     im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
     # generate output frame
-    outputFrame = cv2.cvtColor(frameGray, cv2.COLOR_GRAY2BGR)
+    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     if len(contours) > 0:
         largestCon = max(contours, key=cv2.contourArea)
@@ -453,25 +405,24 @@ def trackBallVid(frame):
     im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
     # generate output frame
-    outputFrame = cv2.cvtColor(frameGray, cv2.COLOR_GRAY2BGR)
+    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     if len(contours) > 0:
         largestCon = max(contours, key=cv2.contourArea)
         ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
 
-        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (255, 255, 255), 1)
+        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (0, 255, 0), 1)
         trackList.append((int(x), int(y)))
 
     for point1, point2 in zip(trackList, trackList[1:]): 
-        cv2.line(outputFrame, point1, point2, [255, 0, 0], 2) 
+        cv2.line(outputFrame, point1, point2, (0, 0, 255), 2) 
 
     return outputFrame
 
 
 def lineDetectVid(frame):
     # create output frame
-    output = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    output = cv2.cvtColor(output, cv2.COLOR_GRAY2RGB)
+    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # threshold on red color
     lowColor = (0,0,85)
@@ -493,9 +444,9 @@ def lineDetectVid(frame):
     for c in contours:
         area = cv2.contourArea(c)
         if area > 5000:
-            cv2.drawContours(output, [c], -1, (0, 255, 0), 1)
+            cv2.drawContours(outputFrame, [c], -1, (0, 255, 0), 1)
     
-    return output
+    return outputFrame
 
 
 # Initialise App
@@ -504,7 +455,7 @@ root = tk.Tk()
 # Global Variables
 currVidFile = ""
 currVidOp = tk.StringVar()
-currVidOp.set("Draw Ball Full")
+currVidOp.set("Draw Ball Prediction")
 currCapture = cv2.VideoCapture(0)
 pause = False
 
@@ -513,6 +464,7 @@ trackList = []
 trackPoints = []
 predPoints = []
 predPointsIndex = 0
+waitBool = True
 
 showA = True
 showB = True
@@ -551,7 +503,7 @@ openVidBut.pack(side="top", pady=5)
 operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", 'Draw Ball Full')
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", 'Draw Ball Prediction')
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
