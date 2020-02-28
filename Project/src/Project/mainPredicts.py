@@ -141,27 +141,6 @@ def selectVideo():
             currCapture.release()
 
 
-def operateVid():
-    global currVidFile, currCapture, bgSubMOG, currVidOp, trackList, predPoints, predPointsIndex, trackPoints
-
-    # Release capture and create new one capture
-    currCapture = cv2.VideoCapture(currVidFile)
-
-    # Reset tracks
-    trackList = []
-
-    trackPoints = []
-    predPoints = []
-    predPointsIndex = 0
-    bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
-
-    # Check capture opened and load display first frame
-    if not currCapture.isOpened():
-        print("Can't open video: ", currVidFile)
-    else:
-        playVideo()
-
-
 def playPause():
     global pause, pauseBut
 
@@ -172,8 +151,34 @@ def playPause():
         pauseBut.configure(text="||")
 
 
+def operateVid():
+    global currVidFile, currCapture, bgSubMOG, currVidOp, trackList, predPoints, predPointsIndex, trackPoints, trackPointsIndex, linePoints, linePointsIndex
+
+    # Release capture and create new one capture
+    currCapture = cv2.VideoCapture(currVidFile)
+
+    # Reset tracks
+    trackList = []
+
+    trackPoints = []
+    trackPointsIndex = 0
+    predPoints = []
+    predPointsIndex = 0
+    bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
+
+    # store an array of points detected as the line for each frame
+    linePoints = []
+    linePointsIndex = 0
+
+    # Check capture opened and load display first frame
+    if not currCapture.isOpened():
+        print("Can't open video: ", currVidFile)
+    else:
+        playVideo()
+
+
 def playVideo():
-    global panelA, panelB, root, currCapture, currVidOp, pause, predPoints, predPointsIndex, trackPoints
+    global panelA, panelB, root, currCapture, currVidOp, pause, predPoints, trackPoints
 
     if not pause:
         ret, frame = currCapture.read()
@@ -182,11 +187,12 @@ def playVideo():
             currCapture.release()
             print("Capture Ends")
 
-            # If finishing generate track then draw the new track
+            # if finishing generate track then draw the new track
             if currVidOp.get() == 'Draw Ball Prediction':
                 # update predPoints now trackPoints are populated
                 print("Predicting Points")
-                predPoints = fillTrackGaps(trackPoints)
+                cleanedTrackPoints = expandTrackGaps(trackPoints)
+                predPoints = fillTrackGaps(cleanedTrackPoints)
 
                 # reset capture and call playVideo now as display predPoints options
                 print("Drawing Ball Full")
@@ -196,7 +202,24 @@ def playVideo():
             # reset currOperation to stage 1 of "Draw Ball Predicition"
             elif currVidOp.get() == 'Draw Ball Prediction 2':
                 currVidOp.set('Draw Ball Prediction')
-            
+
+            # if finished collecting the track points then use them to generate the linePoints
+            elif currVidOp.get() == 'Draw Line Prediction':
+                print("Generating Out-Line")
+                currVidOp.set('Draw Line Prediction 2')
+                trackPoints = expandTrackGaps(trackPoints)
+                currCapture = cv2.VideoCapture(currVidFile)
+                playVideo()
+            # once all line points generated 
+            elif currVidOp.get() == 'Draw Line Prediction 2':
+                print("Drawing Line Full")
+                currVidOp.set('Draw Line Prediction 3')
+                currCapture = cv2.VideoCapture(currVidFile)
+                playVideo()
+            # reset currOperation to stage 1 of "Draw Line Predicition"
+            elif currVidOp.get() == 'Draw Line Prediction 3':
+                currVidOp.set('Draw Line Prediction')
+
         else:
             resizeDim = getResizeDim(frame)
             operatedImage = frame
@@ -212,6 +235,12 @@ def playVideo():
                 operatedImage = genTrackVid(frame)
             elif currVidOp.get() == 'Draw Ball Prediction 2':
                 operatedImage = drawBallFullVid(frame)
+            elif currVidOp.get() == 'Draw Line Prediction':
+                operatedImage = genTrackVid(frame)
+            elif currVidOp.get() == 'Draw Line Prediction 2':
+                operatedImage = genLineVid(frame)
+            elif currVidOp.get() == 'Draw Line Prediction 3':
+                operatedImage = drawLineFullVid(frame)
 
             # resize
             image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
@@ -236,6 +265,67 @@ def playVideo():
             root.after(5, playVideo)
     else:
         root.after(500, playVideo)
+
+
+# draws the contours stored in linePoints - previously generated
+def drawLineFullVid(frame):
+    global linePoints, linePointsIndex
+
+    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    c = linePoints[linePointsIndex]
+
+    cv2.drawContours(outputFrame, [c], -1, (0, 255, 0), 1)
+
+    linePointsIndex += 1
+
+    return outputFrame
+
+
+def genLineVid(frame):
+    global currCapture, bgSubMOG, trackPoints, trackPointsIndex, linePoints
+
+    # create blank image
+    height, width = frame.shape[:2]
+    outputFrame = np.zeros((height, width), np.uint8)
+
+    # used to decide weather to generate line or use previous
+    currTrackPoint = trackPoints[trackPointsIndex]
+
+    # if ball was not detected then set points of current line equal to points of last line
+    if currTrackPoint == (-1,-1,0) and len(linePoints) > 0:
+        currLine = linePoints[trackPointsIndex - 1]
+
+    else:
+        # threshold on red color
+        lowColor = (0,0,85)
+        highColor = (50,50,135)
+        mask = cv2.inRange(frame, lowColor, highColor)
+
+        kernel = np.ones((5,5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        # get contours
+        contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) == 2:
+            contours = contours[0]
+        else:
+            contours = contours[1]
+        
+        # draw contour with largest area
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 5000:
+                cv2.drawContours(outputFrame, [c], -1, 255, -1)
+                currLine = c
+    
+    linePoints.append(currLine)
+    trackPointsIndex += 1
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(outputFrame, "Generating Out-Line", (20,70), font, 2, 255, 2, cv2.LINE_AA)
+
+    return outputFrame
 
 
 def genTrackVid(frame):
@@ -274,7 +364,8 @@ def genTrackVid(frame):
     return outputFrame
 
 
-def fillTrackGaps(trackPoints):
+# expand the track gaps as ball will distort line detection when half over
+def expandTrackGaps(trackPoints):
     cleanTrackPoints = []
     cleanTrackPoints.append(trackPoints[0])
 
@@ -289,14 +380,18 @@ def fillTrackGaps(trackPoints):
     
     cleanTrackPoints.append(trackPoints[-1])
 
+    return cleanTrackPoints
+
+
+def fillTrackGaps(trackPoints):
     # find all sections with a missing point
     missingSections = [[]]
     sectionCount = 0
 
-    for i in range(len(cleanTrackPoints) - 1):
-        x, y, r = cleanTrackPoints[i]
-        pX, pY, pR = cleanTrackPoints[i - 1]
-        nX, nY, nR = cleanTrackPoints[i + 1]
+    for i in range(len(trackPoints) - 1):
+        x, y, r = trackPoints[i]
+        pX, pY, pR = trackPoints[i - 1]
+        nX, nY, nR = trackPoints[i + 1]
 
         # adds missing points to section
         if x < 0:
@@ -334,9 +429,9 @@ def fillTrackGaps(trackPoints):
                     section[i] = (missingX, missingY, endR)
                 
                 # rewrite missing point in full list
-                cleanTrackPoints[pos] = section[i]
+                trackPoints[pos] = section[i]
                       
-    return cleanTrackPoints
+    return trackPoints
 
 
 # uses the pre calculated predicted ball points
@@ -455,16 +550,21 @@ root = tk.Tk()
 # Global Variables
 currVidFile = ""
 currVidOp = tk.StringVar()
-currVidOp.set("Draw Ball Prediction")
+currVidOp.set("Draw Line Prediction")
 currCapture = cv2.VideoCapture(0)
 pause = False
 
 bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
 trackList = []
+
+# used for ball predicting when occluded
 trackPoints = []
+trackPointsIndex = 0
 predPoints = []
 predPointsIndex = 0
-waitBool = True
+
+linePoints = []
+linePointsIndex = 0
 
 showA = True
 showB = True
@@ -503,7 +603,7 @@ openVidBut.pack(side="top", pady=5)
 operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", 'Draw Ball Prediction')
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", "Track Ball Flight", 'Draw Ball Prediction', 'Draw Line Prediction')
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
