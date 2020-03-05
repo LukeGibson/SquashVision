@@ -305,13 +305,24 @@ def decisionVid(frame):
 
     # create colored masks for output
     lineMaskCol = np.zeros((height, width, 3), np.uint8)
-    cv2.drawContours(lineMaskCol, [lineData], -1, (255,0,0), -1)
+    cv2.drawContours(lineMaskCol, [lineData], -1, (255,0,0), 1)
 
     ballMaskCol = np.zeros((height, width, 3), np.uint8)
-    cv2.circle(ballMaskCol, ballData[:2], ballData[2], (0,255,0), -1)
+    cv2.circle(ballMaskCol, ballData[:2], ballData[2], (0,255,0), 1)
 
+    # drawing the track
+    for i in range(1, frameIndex):
+        point1 = predPoints[i]
+        point2 = predPoints[i-1]
+
+        currX = point1[0]
+        lastX = point2[0]
+
+        if currX != -1 and lastX != -1:
+            cv2.line(ballMaskCol, point1[:2], point2[:2], (0,0,255), 2) 
+    
     # add the 2 masks together
-    maskSum = cv2.addWeighted(lineMaskCol, 0.5, ballMaskCol, 0.5, 0)
+    maskSum = cv2.addWeighted(lineMaskCol, 1, ballMaskCol, 1, 0)
 
     # write decisions on frame
     font = cv2.FONT_HERSHEY_SIMPLEX
