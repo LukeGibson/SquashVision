@@ -8,9 +8,6 @@ import time
 import math
 
 
-# Display Helper Functions
-
-
 def getResizeDim(image):
     global showA, showB
 
@@ -153,7 +150,7 @@ def playPause():
 
 
 def operateVid():
-    global currVidFile, currCapture, bgSubMOG, currVidOp, trackList, predPoints, trackPoints, linePoints, anglePoints, frameIndex, deltaPoints
+    global currVidFile, currCapture, bgSubMOG, currVidOp, trackList, predPoints, trackPoints, linePoints, anglePoints, frameIndex, deltaPoints, contactFrames
 
     # Release capture and create new one capture
     currCapture = cv2.VideoCapture(currVidFile)
@@ -172,6 +169,8 @@ def operateVid():
     deltaPoints = []
     # stores the angle of local ball travel between frames
     anglePoints = []
+    # holds the frame indices of the frames where 'contact' is detected
+    contactFrames = []
 
     # stores the current frame index - to reference list values
     frameIndex = 0
@@ -184,7 +183,7 @@ def operateVid():
 
 
 def playVideo():
-    global panelA, panelB, root, currCapture, currVidOp, pause, predPoints, trackPoints, anglePoints, deltaPoints, frameIndex
+    global panelA, panelB, root, currCapture, currVidOp, pause, predPoints, trackPoints, anglePoints, deltaPoints, contactFrames, frameIndex
 
     if not pause:
         ret, frame = currCapture.read()
@@ -193,89 +192,49 @@ def playVideo():
             currCapture.release()
             frameIndex = 0
             print("Capture Ends")
-
-            # if finishing generate track then draw the new track
-            if currVidOp.get() == 'Draw Ball Prediction':
-                # update predPoints now trackPoints are populated
-                print("Predicting Points")
-                cleanedTrackPoints = expandTrackGaps(trackPoints)
-                predPoints = fillTrackGaps(cleanedTrackPoints)
-                # reset capture and call playVideo now as display predPoints options
-                print("Drawing Ball Full")
-                currVidOp.set('Draw Ball Prediction 2')
-                currCapture = cv2.VideoCapture(currVidFile)
-                playVideo()
-            # reset currOperation to stage 1 of "Draw Ball Predicition"
-            elif currVidOp.get() == 'Draw Ball Prediction 2':
-                currVidOp.set('Draw Ball Prediction')
-
-            # if finished collecting the track points then use them to generate the linePoints
-            elif currVidOp.get() == 'Draw Line Prediction':
-                print("Generating Out-Line")
-                currVidOp.set('Draw Line Prediction 2')
-                trackPoints = expandTrackGaps(trackPoints)
-                currCapture = cv2.VideoCapture(currVidFile)
-                playVideo()
-            # once all line points generated 
-            elif currVidOp.get() == 'Draw Line Prediction 2':
-                print("Drawing Line Full")
-                currVidOp.set('Draw Line Prediction 3')
-                currCapture = cv2.VideoCapture(currVidFile)
-                playVideo()
-            # reset currOperation to stage 1 of "Draw Line Predicition"
-            elif currVidOp.get() == 'Draw Line Prediction 3':
-                currVidOp.set('Draw Line Prediction')
-
-            # if finished collecting track points then use them to calculate point flight angle
-            elif currVidOp.get() == 'Draw Track Angle':
-                currVidOp.set('Draw Track Angle 2')
-                cleanedTrackPoints = expandTrackGaps(trackPoints)
-                predPoints = fillTrackGaps(cleanedTrackPoints)
-                anglePoints = calcPointAngles(predPoints)
-                currCapture = cv2.VideoCapture(currVidFile)
-                playVideo()
-            # reset currOperation to stage 1 of "Draw Track Angle"
-            elif currVidOp.get() == 'Draw Track Angle 2':
-                currVidOp.set('Draw Track Angle')
             
-            # if finished collecting track points then use them to calculate point delta
-            elif currVidOp.get() == 'Draw Track Delta':
-                currVidOp.set('Draw Track Delta 2')
-                cleanedTrackPoints = expandTrackGaps(trackPoints)
-                predPoints = fillTrackGaps(cleanedTrackPoints)
-                deltaPoints = calcDeltaPoints(predPoints)
+            # Do next stage of the operation process
+            if currVidOp.get() == 'Make Decision':
+                # expand gaps in track points
+                trackPoints = expandTrackGaps(trackPoints)
+ 
+                # use missing trackPoints to generate linePoints
+                currVidOp.set('Make Decision 2')
                 currCapture = cv2.VideoCapture(currVidFile)
                 playVideo()
-            elif currVidOp.get() == 'Draw Track Delta 2':
-                currVidOp.set('Draw Track Delta')
+
+            elif currVidOp.get() == 'Make Decision 2':
+                # predicit missing points in track
+                predPoints = fillTrackGaps(trackPoints)
+
+                # calculate anglePoints and deltaPoints from predPoints
+                anglePoints = calcPointAngles(predPoints)
+                deltaPoints = calcDeltaPoints(predPoints)
+
+                # calculate contactFrames from anglePoints
+                contactFrames = calcContactFrames(anglePoints, deltaPoints)
+                print("Contact frames", contactFrames)
+
+                # use predPoints, linePoints and contactFrames to calculate decision in each frame
+                currVidOp.set('Make Decision 3')
+                currCapture = cv2.VideoCapture(currVidFile)
+                playVideo()
+            
+            elif currVidOp.get() == 'Make Decision 3':
+                currVidOp.set('Make Decision')
 
         else:
             resizeDim = getResizeDim(frame)
             operatedImage = frame
 
             # perform operation
-            if currVidOp.get() == 'Draw Ball Outline':
-                operatedImage = drawBallVid(frame)
-            elif currVidOp.get() == 'Draw Line Outline':
-                operatedImage = lineDetectVid(frame)
-            elif currVidOp.get() == 'Draw Ball Prediction':
+            if currVidOp.get() == 'Make Decision':
                 operatedImage = genTrackVid(frame)
-            elif currVidOp.get() == 'Draw Ball Prediction 2':
-                operatedImage = drawBallFullVid(frame)
-            elif currVidOp.get() == 'Draw Line Prediction':
-                operatedImage = genTrackVid(frame)
-            elif currVidOp.get() == 'Draw Line Prediction 2':
+            if currVidOp.get() == 'Make Decision 2':
                 operatedImage = genLineVid(frame)
-            elif currVidOp.get() == 'Draw Line Prediction 3':
-                operatedImage = drawLineFullVid(frame)
-            elif currVidOp.get() == 'Draw Track Angle':
-                operatedImage = genTrackVid(frame)
-            elif currVidOp.get() == 'Draw Track Angle 2':
-                operatedImage = drawTrackAngleVid(frame)
-            elif currVidOp.get() == 'Draw Track Delta':
-                operatedImage = genTrackVid(frame)
-            elif currVidOp.get() == 'Draw Track Delta 2':
-                operatedImage = drawTrackDeltaVid(frame)
+            if currVidOp.get() == 'Make Decision 3':
+                operatedImage = decisionVid(frame)
+            
 
             # resize
             image = cv2.resize(frame, resizeDim, interpolation=cv2.INTER_AREA)
@@ -302,159 +261,78 @@ def playVideo():
         root.after(500, playVideo)
 
 
-# use generated predPoints to draw track
-def drawTrackDeltaVid(frame):
-    global predPoints, deltaPoints, frameIndex
-
-    # generate output frame
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    contactColor = (0,255,0)
-    noContactColor = (0,0,255)
-
-    # drawing the track
-    for i in range(1, frameIndex):
-        point1 = predPoints[i]
-        point2 = predPoints[i-1]
-
-        currX, currY = point1[:2]
-        lastX, lastY = point2[:2]
-
-        if currX != -1 and lastX != -1:
-            # highlights the points where distance travelled between frames was less than threshold
-            delta = deltaPoints[i]
-            threshold = 5.0
-
-            if delta < threshold:
-                cv2.line(outputFrame, point1[:2], point2[:2], contactColor, 2) 
-            else:
-                cv2.line(outputFrame, point1[:2], point2[:2], noContactColor, 2) 
+# check all coordinates of ball and line borders to see if any coordinate is on/above line
+def isBallOut(ball, line):
+    for by, bx in ball:
+        for ly, lx in line:
+            if bx == lx and by <= ly:
+                return True
     
-    # display delta at current frame
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(outputFrame, "Delta: " + str(deltaPoints[frameIndex]), (20,70), font, 2, 0, 2, cv2.LINE_AA)
+    return False
 
-    print(frameIndex, deltaPoints[frameIndex])
-    frameIndex += 1
+# play video with decision in each frame
+def decisionVid(frame):
+    global predPoints, linePoints, frameIndex, contactFrames
 
-    return outputFrame
-
-
-# display the angle of ball flight for each frame of video
-def drawTrackAngleVid(frame):
-    global predPoints, anglePoints, frameIndex
-
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    contactColor = (0,255,0)
-    noContactColor = (0,0,255)
-
-    # drawing the track
-    for i in range(1, frameIndex):
-        point1 = predPoints[i]
-        point2 = predPoints[i-1]
-
-        currX, currY = point1[:2]
-        lastX, lastY = point2[:2]
-
-        angle = anglePoints[i]
-        threshold = 160
-
-        if currX != -1 and lastX != -1 and angle != None:
-            # highlights the points where distance travelled between frames was less than threshold
-            if angle < threshold:
-                cv2.line(outputFrame, point1[:2], point2[:2], contactColor, 2) 
-            else:
-                cv2.line(outputFrame, point1[:2], point2[:2], noContactColor, 2) 
-
-    angle = anglePoints[frameIndex]
-
-    if angle != None:
-        angle = str(angle)
+    if frameIndex in contactFrames:
+        ballContact = True
     else:
-        angle = "NAN"
+        ballContact = False
 
+    ballOut = False
+
+    # get frame dimensions
+    height, width = frame.shape[:2]
+
+    # get frame line and ball data
+    lineData = linePoints[frameIndex]
+    ballData = predPoints[frameIndex]
+
+    # create line mask
+    lineMask = np.zeros((height, width), np.uint8)
+    cv2.drawContours(lineMask, [lineData], -1, 255, 1)
+
+    # create ball mask
+    ballMask = np.zeros((height, width), np.uint8)
+    cv2.circle(ballMask, ballData[:2], ballData[2], 255, 1)
+
+    # get coordinates of the line and ball
+    line = np.transpose(np.where(lineMask==255))
+    ball = np.transpose(np.where(ballMask==255))
+
+    # check if ball is on/above line
+    ballOut = isBallOut(ball, line)
+
+    # create colored masks for output
+    lineMaskCol = np.zeros((height, width, 3), np.uint8)
+    cv2.drawContours(lineMaskCol, [lineData], -1, (255,0,0), -1)
+
+    ballMaskCol = np.zeros((height, width, 3), np.uint8)
+    cv2.circle(ballMaskCol, ballData[:2], ballData[2], (0,255,0), -1)
+
+    # add the 2 masks together
+    maskSum = cv2.addWeighted(lineMaskCol, 0.5, ballMaskCol, 0.5, 0)
+
+    # write decisions on frame
     font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(outputFrame, "Angle: " + angle, (20,70), font, 2, 0, 2, cv2.LINE_AA)
+    if ballOut:
+        cv2.putText(maskSum, "Ball Out: True", (20,70), font, 2, (255,0,0), 2, cv2.LINE_AA)
+    else:
+        cv2.putText(maskSum, "Ball Out: False", (20,70), font, 2, (0,255,0), 2, cv2.LINE_AA)
+    
+    if ballContact:
+        cv2.putText(maskSum, "Ball Contact: True", (20,140), font, 2, (255,0,0), 2, cv2.LINE_AA)
+    else:
+        cv2.putText(maskSum, "Ball Contact: False", (20,140), font, 2, (0,255,0), 2, cv2.LINE_AA)
 
-    print(frameIndex, angle)
+    if ballContact and ballOut:
+        cv2.putText(maskSum, "Decision: OUT", (20,210), font, 2, (255,0,0), 2, cv2.LINE_AA)
+    else:
+        cv2.putText(maskSum, "Decision: IN", (20,210), font, 2, (0,255,0), 2, cv2.LINE_AA)
+    
     frameIndex += 1
 
-    return outputFrame
-
-
-# calculate delta points
-def calcDeltaPoints(trackPoints):
-    deltaPoints = []
-
-    # first change must be 0
-    deltaPoints.append(0)
-
-    for i in range(1, len(trackPoints)):
-        prevX, prevY = trackPoints[i-1][:2]
-        currX, currY = trackPoints[i][:2]
-
-        delta = round(math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2)), 3)
-
-        deltaPoints.append(delta)
-    
-    return deltaPoints
-
-
-# given a list of ball points calculate the angle at each point
-def calcPointAngles(predPoints):
-    anglePoints = []
-    
-    # angle at the first point can't be calculated
-    anglePoints.append(None)
-    anglePoints.append(None)
-
-    # calculate the angle at each point using prev and next point 
-    for i in range(2, len(predPoints) - 2):
-        prevX, prevY = predPoints[i - 2][:2]
-        currX, currY = predPoints[i][:2]
-        nextX, nextY = predPoints[i + 2][:2]
-
-        # check all points are of a detected ball
-        if -1 in [prevX, currX, nextX]:
-            angle = None
-        # use the cosine rule to calculate the angle at current point: cos(C) = (a^2 + b^2 - c^2) / 2ab
-        else:
-            # calculate vectors
-            a = math.sqrt(((currX - nextX)**2) + ((currY - nextY)**2))
-            b = math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2))
-            c = math.sqrt(((prevX - nextX)**2) + ((prevY - nextY)**2))
-            
-            # calculate angle
-            if a > 0 and b > 0:
-                cosC = ((a**2) + (b**2) - (c**2)) / (2 * a * b)
-                cosC = np.clip(cosC, -1, 1)
-                angle = round(math.degrees(math.acos(cosC)), 3)
-            else:
-                angle = None
-
-        anglePoints.append(angle)
-    
-    # angle at the last point can't be calculated
-    anglePoints.append(None)
-    anglePoints.append(None)
-
-    return anglePoints
-
-
-
-# draws the contours stored in linePoints - previously generated
-def drawLineFullVid(frame):
-    global linePoints, frameIndex
-
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    c = linePoints[frameIndex]
-
-    cv2.drawContours(outputFrame, [c], -1, (0, 255, 0), 1)
-
-    frameIndex += 1
-
-    return outputFrame
+    return maskSum
 
 
 def genLineVid(frame):
@@ -468,7 +346,7 @@ def genLineVid(frame):
     currTrackPoint = trackPoints[frameIndex]
 
     # if ball was not detected then set points of current line equal to points of last line
-    if currTrackPoint == (-1,-1,0) and len(linePoints) > 0:
+    if currTrackPoint == (-1,-1,0) and len(linePoints) > 1:
         currLine = linePoints[frameIndex - 1]
 
     else:
@@ -538,6 +416,85 @@ def genTrackVid(frame):
     cv2.putText(outputFrame, "Generating Track", (20,70), font, 2, 255, 2, cv2.LINE_AA)
 
     return outputFrame
+
+
+# calculate the frame indecies in which contact with the wall occurred
+def calcContactFrames(anglePoints, deltaPoints):
+    contactFrames = []
+
+    minAngle = 180
+    minAngleIndex = -1
+
+    for i in range(len(anglePoints)):
+        angle = anglePoints[i]
+
+        if angle != None:
+            if angle < minAngle:
+                minAngle = angle
+                minAngleIndex = i
+
+    contactFrames = [minAngleIndex - 1, minAngleIndex, minAngleIndex + 1]
+
+    return contactFrames
+
+
+# calculate delta points
+def calcDeltaPoints(predPoints):
+    deltaPoints = []
+
+    # first change must be 0
+    deltaPoints.append(0)
+
+    for i in range(1, len(predPoints)):
+        prevX, prevY = predPoints[i-1][:2]
+        currX, currY = predPoints[i][:2]
+
+        delta = round(math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2)), 3)
+
+        deltaPoints.append(delta)
+    
+    return deltaPoints
+
+
+# given a list of ball points calculate the angle at each point
+def calcPointAngles(predPoints):
+    anglePoints = []
+    
+    # angle at the first point can't be calculated
+    anglePoints.append(None)
+    anglePoints.append(None)
+
+    # calculate the angle at each point using prev and next point 
+    for i in range(2, len(predPoints) - 2):
+        prevX, prevY = predPoints[i - 2][:2]
+        currX, currY = predPoints[i][:2]
+        nextX, nextY = predPoints[i + 2][:2]
+
+        # check all points are of a detected ball
+        if -1 in [prevX, currX, nextX]:
+            angle = None
+        # use the cosine rule to calculate the angle at current point: cos(C) = (a^2 + b^2 - c^2) / 2ab
+        else:
+            # calculate vectors
+            a = math.sqrt(((currX - nextX)**2) + ((currY - nextY)**2))
+            b = math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2))
+            c = math.sqrt(((prevX - nextX)**2) + ((prevY - nextY)**2))
+            
+            # calculate angle
+            if a > 0 and b > 0:
+                cosC = ((a**2) + (b**2) - (c**2)) / (2 * a * b)
+                cosC = np.clip(cosC, -1, 1)
+                angle = round(math.degrees(math.acos(cosC)), 3)
+            else:
+                angle = None
+
+        anglePoints.append(angle)
+    
+    # angle at the last point can't be calculated
+    anglePoints.append(None)
+    anglePoints.append(None)
+
+    return anglePoints
 
 
 # expand the track gaps as ball will distort line detection when half over
@@ -616,82 +573,6 @@ def fillTrackGaps(trackPoints):
     return trackPoints
 
 
-# uses the pre calculated predicted ball points
-def drawBallFullVid(frame):
-    global predPoints, frameIndex
-
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    x, y, r = predPoints[frameIndex]
-
-    if x > -1:
-        cv2.circle(outputFrame, (x,y), r, (0, 255, 0), 1)
-
-    frameIndex += 1
-
-    return outputFrame
-
-
-def drawBallVid(frame):
-    global bgSubMOG
-
-    # blur and convert to grayscale
-    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
-    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
-
-    # Create binary mask using subtractor
-    mask = bgSubMOG.apply(frameGray)
-
-    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
-    kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-
-    # find contours
-    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
-    # generate output frame
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    if len(contours) > 0:
-        largestCon = max(contours, key=cv2.contourArea)
-        ((x, y), radius) = cv2.minEnclosingCircle(largestCon)
-
-        M = cv2.moments(largestCon)
-        center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-
-        cv2.circle(outputFrame, (int(x), int(y)), int(radius), (0, 255, 0), 1)
-        cv2.circle(outputFrame, center, 1, (255, 0, 0), -1)
-
-    return outputFrame
-
-
-def lineDetectVid(frame):
-    # create output frame
-    outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # threshold on red color
-    lowColor = (0,0,85)
-    highColor = (50,50,135)
-    mask = cv2.inRange(frame, lowColor, highColor)
-
-    kernel = np.ones((5,5), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    # get contours
-    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if len(contours) == 2:
-        contours = contours[0]
-    else:
-        contours = contours[1]
-    
-    # draw contour with largest area
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area > 5000:
-            cv2.drawContours(outputFrame, [c], -1, (0, 255, 0), 1)
-    
-    return outputFrame
-
 
 # Initialise App
 root = tk.Tk()
@@ -699,19 +580,22 @@ root = tk.Tk()
 # Global Variables
 currVidFile = ""
 currVidOp = tk.StringVar()
-currVidOp.set("Draw Track Delta")
+currVidOp.set("Make Decision")
 currCapture = cv2.VideoCapture(0)
 pause = False
 
 bgSubMOG = cv2.bgsegm.createBackgroundSubtractorMOG()
 trackList = []
 
-# used for ball predicting when occluded
+# stores the calculated data about frames of the input video
 trackPoints = []
 predPoints = []
 linePoints = []
 anglePoints = []
 deltaPoints = []
+
+# holds the frame indices of the frames where 'contact' is detected
+contactFrames = []
 
 frameIndex = 0
 
@@ -752,7 +636,7 @@ openVidBut.pack(side="top", pady=5)
 operateVidBut = tk.Button(displayC, text="Operate Video", padx=10, pady=5, command=operateVid)
 operateVidBut.pack(side="top", pady=5)
 
-opVidSelect = tk.OptionMenu(displayC, currVidOp, "Draw Ball Outline", "Draw Line Outline", 'Draw Ball Prediction', 'Draw Line Prediction', 'Draw Track Angle', 'Draw Track Delta')
+opVidSelect = tk.OptionMenu(displayC, currVidOp, "Make Decision")
 opVidSelect.pack(side="top", pady=5)
 
 pauseBut = tk.Button(displayC, text="||", padx=10, pady=5, command=playPause)
