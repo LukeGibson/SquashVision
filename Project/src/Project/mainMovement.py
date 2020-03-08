@@ -301,12 +301,16 @@ def genLineVid(frame):
 
     else:
         # threshold on red color
-        lowColor = (0,0,85)
+        lowColor = (0,0,75)
         highColor = (50,50,135)
         mask = cv2.inRange(frame, lowColor, highColor)
 
-        kernel = np.ones((5,5), np.uint8)
+        kernel = np.ones((7,7), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        # to join line contours objects
+        mask = cv2.dilate(mask, kernel,iterations=4)
+        mask = cv2.erode(mask, kernel, iterations=4)
 
         # get contours
         contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -316,12 +320,23 @@ def genLineVid(frame):
         else:
             contours = contours[1]
         
-        # draw contour with largest area
+        largestSpan = 0
+        largestSpanCon = None
+        
+        # find contour with largest horizontail span - a feature of the outline
         for c in contours:
-            area = cv2.contourArea(c)
-            if area > 5000:
-                cv2.drawContours(outputFrame, [c], -1, 255, -1)
-                currLine = c
+            leftmost = (c[c[:,:,0].argmin()][0])[0]
+            rightmost = (c[c[:,:,0].argmax()][0])[0]
+            span = abs(leftmost - rightmost)
+
+            if span > largestSpan:
+                largestSpan = span
+                largestSpanCon = c
+        
+        # draw contour with largest span
+        if len(contours) > 0:
+            cv2.drawContours(outputFrame, [largestSpanCon], -1, 255, -1)
+            currLine = largestSpanCon
     
     linePoints.append(currLine)
     trackPointsIndex += 1
@@ -619,12 +634,16 @@ def lineDetectVid(frame):
     outputFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # threshold on red color
-    lowColor = (0,0,85)
+    lowColor = (0,0,75)
     highColor = (50,50,135)
     mask = cv2.inRange(frame, lowColor, highColor)
 
-    kernel = np.ones((5,5), np.uint8)
+    kernel = np.ones((7,7), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # to join line contours objects
+    mask = cv2.dilate(mask, kernel,iterations=4)
+    mask = cv2.erode(mask, kernel, iterations=4)
 
     # get contours
     contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -633,12 +652,23 @@ def lineDetectVid(frame):
         contours = contours[0]
     else:
         contours = contours[1]
+
+    largestSpan = 0
+    largestSpanCon = None
     
-    # draw contour with largest area
+    # find contour with largest horizontail span - a feature of the outline
     for c in contours:
-        area = cv2.contourArea(c)
-        if area > 5000:
-            cv2.drawContours(outputFrame, [c], -1, (0, 255, 0), 1)
+        leftmost = (c[c[:,:,0].argmin()][0])[0]
+        rightmost = (c[c[:,:,0].argmax()][0])[0]
+        span = abs(leftmost - rightmost)
+
+        if span > largestSpan:
+            largestSpan = span
+            largestSpanCon = c
+    
+    # draw contour with largest span
+    if len(contours) > 0:
+        cv2.drawContours(outputFrame, [largestSpanCon], -1, (0, 255, 0), 1)
     
     return outputFrame
 
