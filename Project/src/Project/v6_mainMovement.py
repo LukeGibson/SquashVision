@@ -323,7 +323,7 @@ def genLineVid(frame):
         largestSpan = 0
         largestSpanCon = None
         
-        # find contour with largest horizontail span - a feature of the outline
+        # find contour with largest horizontail span - a feature of the outliney
         for c in contours:
             leftmost = (c[c[:,:,0].argmin()][0])[0]
             rightmost = (c[c[:,:,0].argmax()][0])[0]
@@ -559,7 +559,7 @@ def drawBallVid(frame):
             found = False
             closestCon = None
             # theshold for minimum distance from last known ball - could be adapted to increase when number of frames since last detected
-            smallestDelta = 100
+            smallestDelta = 200
             nextBall = (-1,-1)
 
             lastX, lastY = lastSeenBall
