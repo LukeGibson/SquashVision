@@ -114,8 +114,8 @@ def getContactFrames(clipPath):
 
 def genCollectionResults(collectionName, testName):
     clipDirPath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\Footage\\' + collectionName + '\\'
-    resultDirPath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName
-    resultFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\' + collectionName + '.csv'
+    resultDirPath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\csv\\'
+    resultFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\csv\\' + collectionName + '.csv'
 
 
     # get every clip file name in clipDirPath
@@ -177,7 +177,7 @@ def compearResult(testName, collections):
     allQualityCounts = []
 
     for collectionName in collections:
-        resultFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\' + collectionName + '.csv'
+        resultFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\csv\\' + collectionName + '.csv'
         truthFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\truth\\' + 'truth_' + collectionName + '.csv'
 
         # read truth and test csv for configuration
@@ -291,9 +291,9 @@ collections = [
     "tight_angle"
 ]
 
-test = "test1"
+test = "test5"
 
-# for col in collections:
-#     genCollectionResults(col, test)
+for col in collections:
+    genCollectionResults(col, test)
 
 compearResult(test, collections)

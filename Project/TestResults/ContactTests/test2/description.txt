@@ -1,8 +1,7 @@
 Gradient from point 3 frames before to current 
 Noise removed from gradient points – averaged with 2 neighbours
 Rate of Gradient change from previous point calculated
-First Rate of Gradient change > 0.08 = 2 frames before contact
+First Rate of Gradient change > 0.08 = 1 frames before contact
 
 Inspection:
     Detection errors in a few clips where ball is small
-    Detected frames often 1 frame to early

@@ -11,12 +11,12 @@ def calcContactFrames4(gradRatePoints, deltaPoints):
     contactIndex = -1
     contactFound = False
 
-    for i in range(15, len(gradRatePoints)):
+    for i in range(len(gradRatePoints)):
         gradRate = gradRatePoints[i]
 
         if gradRate != None and contactFound == False:
             if gradRate > threshold:
-                contactIndex = i - 2 # -2 as in a frame is calculated from a point 3 frames previous
+                contactIndex = i - 1 # -1 as in a frame is calculated from a point 2 frames previous
                 contactFound = True
 
     if contactFound:
@@ -65,7 +65,7 @@ def calcContactFrames2(rateAnglePoints, deltaPoints):
                 minRateAngle = rateAngle
                 minRateAngleIndex = i
 
-    if minRateAngleIndex > 0 and minRateAngleIndex < len(anglePoints):
+    if minRateAngleIndex > 0 and minRateAngleIndex < len(rateAnglePoints):
         contactFrames = [minRateAngleIndex - 1, minRateAngleIndex, minRateAngleIndex + 1]
     else:
         contactFrames = [minRateAngleIndex]
@@ -127,7 +127,8 @@ def calcPointGrad(predPoints):
         prevX, prevY = predPoints[i-3][:2]
         currX, currY = predPoints[i][:2]
 
-        if (currX - prevX) != 0:
+        # check for divide by 0 error and that both points are of detected balls
+        if (currX - prevX) != 0 and prevX != -1 and currX != -1:
             m = (currY - prevY)/(currX - prevX)
             gradPoints.append(m)
         else:

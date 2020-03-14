@@ -249,22 +249,22 @@ def playVideo():
                     radiusPoints = [x[2] for x in predPoints]
 
                     # display point features as a graph
-                    fig1, ax1 = plt.subplots(ncols=3, nrows=2, figsize=(20, 20))
-                    frameNumbers = list(range(0, len(predPoints)))
+                    # fig1, ax1 = plt.subplots(ncols=3, nrows=2, figsize=(20, 20))
+                    # frameNumbers = list(range(0, len(predPoints)))
 
-                    sns.lineplot(frameNumbers[20:], gradPoints[20:], ax=ax1[0][0])
-                    sns.lineplot(frameNumbers[20:], rateGradPoints[20:], ax=ax1[1][0])
-                    sns.lineplot(frameNumbers[20:], anglePoints[20:], ax=ax1[0][1])
-                    sns.lineplot(frameNumbers[20:], rateAnglePoints[20:], ax=ax1[1][1])
-                    sns.lineplot(frameNumbers[20:], deltaPoints[20:], ax=ax1[0][2])
-                    sns.lineplot(frameNumbers[20:], radiusPoints[20:], ax=ax1[1][2])
+                    # sns.lineplot(frameNumbers[20:], gradPoints[20:], ax=ax1[0][0])
+                    # sns.lineplot(frameNumbers[20:], rateGradPoints[20:], ax=ax1[1][0])
+                    # sns.lineplot(frameNumbers[20:], anglePoints[20:], ax=ax1[0][1])
+                    # sns.lineplot(frameNumbers[20:], rateAnglePoints[20:], ax=ax1[1][1])
+                    # sns.lineplot(frameNumbers[20:], deltaPoints[20:], ax=ax1[0][2])
+                    # sns.lineplot(frameNumbers[20:], radiusPoints[20:], ax=ax1[1][2])
 
-                    ax1[0][0].set(title="Grad")
-                    ax1[1][0].set(title="Rate Grad")
-                    ax1[0][1].set(title="Angle")
-                    ax1[1][1].set(title="Rate Angle")
-                    ax1[0][2].set(title="Delta")
-                    ax1[1][2].set(title="Radius")
+                    # ax1[0][0].set(title="Grad")
+                    # ax1[1][0].set(title="Rate Grad")
+                    # ax1[0][1].set(title="Angle")
+                    # ax1[1][1].set(title="Rate Angle")
+                    # ax1[0][2].set(title="Delta")
+                    # ax1[1][2].set(title="Radius")
                     # plt.show()
 
                     contactFrames = calc.calcContactFrames4(rateGradPoints, deltaPoints)
