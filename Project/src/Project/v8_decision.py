@@ -7,7 +7,7 @@ import tkinter as tk
 import time
 import math
 
-import v7_calculations as calc
+import v8_calculations as calc
 
 
 def getResizeDim(image):
@@ -245,7 +245,7 @@ def playVideo():
                     yValueList = [(anglePoints, "Angle"), (rateAnglePoints, "Angle Change"), (gradPoints, "Gradient"), (rateGradPoints, "Gradient Change"), (deltaPoints, "Delta"), (radiusPoints, "Radius")]
                     calc.displayGraphs(yValueList)
 
-                    contactFrames = calc.calcContactFrames4(rateGradPoints, deltaPoints)
+                    contactFrames = calc.calcContactFrames(rateGradPoints, deltaPoints)
 
                     # use predPoints, linePoints and contactFrames to calculate decision in each frame
                     currVidOp.set('Make Decision 2')

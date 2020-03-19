@@ -7,7 +7,7 @@ import seaborn as sns
 
 # display graphs for a given set of lists
 def displayGraphs(yValueList):
-    fig1, ax = plt.subplots(ncols=3, nrows=2, figsize=(15, 15))
+    fig1, ax = plt.subplots(ncols=3, nrows=2, figsize=(10, 10))
     frameNumbers = list(range(0, len(yValueList[0][0])))
 
     for i in range(len(yValueList)):
@@ -24,94 +24,35 @@ def displayGraphs(yValueList):
 
 
 # uses input linear gradient to find when linear gradient changes
-def calcContactFrames4(gradRatePoints, deltaPoints):
+def calcContactFrames(gradRatePoints, deltaPoints):
     contactFrames = []
 
     threshold = 0.08
     contactIndex = -1
-    contactFound = False
+    contactGradRate = 0
 
     for i in range(len(gradRatePoints)):
         gradRate = gradRatePoints[i]
 
-        if gradRate != None and contactFound == False:
+        if gradRate != None and contactGradRate == 0:
             if gradRate > threshold:
-                contactIndex = i - 1 # -1 as in a frame is calculated from a point 2 frames previous
-                contactFound = True
+                contactIndex = i - 0 # -1 as in a frame is calculated from a point 2 frames previous
+                contactGradRate = gradRate
 
-    if contactFound:
-        contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1]
+    if contactGradRate != 0:
+
+        # estimate the number of contact frames based on change on trajectory at point of contact
+        if contactGradRate < 0.1:
+            contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1, contactIndex + 2]
+        elif contactGradRate >= 0.1 and contactGradRate < 0.16:
+            contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1]
+        elif contactGradRate >= 0.16:
+            contactFrames = [contactIndex, contactIndex + 1]      
+
     else:
         contactFrames = []
 
-    return contactFrames
-
-
-# calculate the frame indecies in which contact with the wall occurred
-def calcContactFrames3(gradPoints, deltaPoints):
-    contactFrames = []
-
-    minGrad = 1000
-    minGradIndex = -1
-
-    for i in range(len(gradPoints)):
-        grad = gradPoints[i]
-
-        if grad != None:
-            if grad < minGrad:
-                minGradIndex = grad
-                minGradIndex = i
-
-    if minGradIndex > 0 and minGradIndex < len(gradPoints):
-        contactFrames = [minGradIndex - 1, minGradIndex, minGradIndex + 1]
-    else:
-        contactFrames = [minGradIndex]
-
-    return contactFrames
-
-
-# calculate the frame indecies in which contact with the wall occurred
-def calcContactFrames2(rateAnglePoints, deltaPoints):
-    contactFrames = []
-
-    minRateAngle = 0
-    minRateAngleIndex = -1
-
-    for i in range(len(rateAnglePoints)):
-        rateAngle = rateAnglePoints[i]
-
-        if rateAngle != None:
-            if rateAngle > minRateAngle:
-                minRateAngle = rateAngle
-                minRateAngleIndex = i
-
-    if minRateAngleIndex > 0 and minRateAngleIndex < len(rateAnglePoints):
-        contactFrames = [minRateAngleIndex - 1, minRateAngleIndex, minRateAngleIndex + 1]
-    else:
-        contactFrames = [minRateAngleIndex]
-
-    return contactFrames
-
-
-# calculate the frame indecies in which contact with the wall occurred
-def calcContactFrames(anglePoints, deltaPoints):
-    contactFrames = []
-
-    minAngle = 180
-    minAngleIndex = -1
-
-    for i in range(len(anglePoints)):
-        angle = anglePoints[i]
-
-        if angle != None:
-            if angle < minAngle:
-                minAngle = angle
-                minAngleIndex = i
-
-    if minAngleIndex > 0 and minAngleIndex < len(anglePoints):
-        contactFrames = [minAngleIndex - 1, minAngleIndex, minAngleIndex + 1]
-    else:
-        contactFrames = [minAngleIndex]
+    print("Contact Frames:", contactFrames)
 
     return contactFrames
 
