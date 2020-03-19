@@ -36,11 +36,10 @@ def calcContactFrames(gradRatePoints, deltaPoints):
 
         if gradRate != None and contactGradRate == 0:
             if gradRate > threshold:
-                contactIndex = i - 0 # -1 as in a frame is calculated from a point 2 frames previous
+                contactIndex = i - 1 # -1 as in a frame is calculated from a point 2 frames previous
                 contactGradRate = gradRate
 
     if contactGradRate != 0:
-
         # estimate the number of contact frames based on change on trajectory at point of contact
         if contactGradRate < 0.1:
             contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1, contactIndex + 2]
@@ -215,11 +214,11 @@ def removeListNoise(myList):
 def expandTrackGaps(trackPoints, linePoints):
     cleanTrackPoints = []
     cleanTrackPoints.append(trackPoints[0])
-    cleanTrackPoints.append(trackPoints[1])
+    cleanTrackPoints.append(trackPoints[0])
 
     cleanLinePoints = []
     cleanLinePoints.append(linePoints[0])
-    cleanLinePoints.append(linePoints[1])
+    cleanLinePoints.append(linePoints[0])
 
     # if either neighbouring point doesn't have a ball detection assume the detection in current point is poor
     for i in range(2, len(trackPoints) - 2):
@@ -230,10 +229,10 @@ def expandTrackGaps(trackPoints, linePoints):
             cleanTrackPoints.append((-1,-1,0))
             cleanLinePoints.append(cleanLinePoints[i-1])
     
-    cleanTrackPoints.append(trackPoints[-2])
+    cleanTrackPoints.append(trackPoints[-1])
     cleanTrackPoints.append(trackPoints[-1])
 
-    cleanLinePoints.append(linePoints[-2])
+    cleanLinePoints.append(linePoints[-1])
     cleanLinePoints.append(linePoints[-1])
 
     return cleanTrackPoints, cleanLinePoints
@@ -244,7 +243,7 @@ def fillTrackGaps(trackPoints):
     missingSections = [[]]
     sectionCount = 0
 
-    for i in range(len(trackPoints) - 1):
+    for i in range(1, len(trackPoints) - 1):
         x, y, r = trackPoints[i]
         pX, pY, pR = trackPoints[i - 1]
         nX, nY, nR = trackPoints[i + 1]

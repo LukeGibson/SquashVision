@@ -30,6 +30,46 @@ def getContactFrames(clipPath):
         ret, frame = currCapture.read()
 
         if ret:
+            # FIND LINE POINTS
+
+            # threshold on red color
+            lowColor = (0,0,75)
+            highColor = (50,50,135)
+            mask = cv2.inRange(frame, lowColor, highColor)
+
+            kernel = np.ones((7,7), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+            # to join line contours objects
+            mask = cv2.dilate(mask, kernel,iterations=4)
+            mask = cv2.erode(mask, kernel, iterations=4)
+
+            # get contours
+            contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            if len(contours) == 2:
+                contours = contours[0]
+            else:
+                contours = contours[1]
+            
+            largestSpan = 0
+            largestSpanCon = None
+            
+            # find contour with largest horizontail span - a feature of the outliney
+            for c in contours:
+                leftmost = (c[c[:,:,0].argmin()][0])[0]
+                rightmost = (c[c[:,:,0].argmax()][0])[0]
+                span = abs(leftmost - rightmost)
+
+                if span > largestSpan:
+                    largestSpan = span
+                    largestSpanCon = c
+
+            linePoints.append(largestSpanCon)
+
+
+            # FIND TRACK POINTS
+
             # blur and convert to grayscale
             frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
             frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
@@ -100,9 +140,8 @@ def getContactFrames(clipPath):
             break
     
     currCapture.release()
-    currCapture = cv2.VideoCapture(clipPath)
 
-    trackPoints = calc.expandTrackGaps(trackPoints, linePoints)
+    trackPoints, linePoints = calc.expandTrackGaps(trackPoints, linePoints)
     predPoints = calc.fillTrackGaps(trackPoints)
 
     gradPoints = calc.calcPointGrad(predPoints)
@@ -308,8 +347,7 @@ def compearResult(testName, collections):
     fig.savefig('C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\' + testName + '_accuracy.png', dpi=fig.dpi)
 
 
-
-
+# RUN
 
 collections = [
     "collection_1",
@@ -323,9 +361,9 @@ collections = [
     "tight_angle"
 ]
 
-test = "test5"
+test = "test7"
 
-# for col in collections:
-#     genCollectionResults(col, test)
+for col in collections:
+    genCollectionResults(col, test)
 
 compearResult(test, collections)

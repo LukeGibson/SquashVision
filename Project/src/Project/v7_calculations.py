@@ -274,11 +274,11 @@ def removeListNoise(myList):
 def expandTrackGaps(trackPoints, linePoints):
     cleanTrackPoints = []
     cleanTrackPoints.append(trackPoints[0])
-    cleanTrackPoints.append(trackPoints[1])
+    cleanTrackPoints.append(trackPoints[0])
 
     cleanLinePoints = []
     cleanLinePoints.append(linePoints[0])
-    cleanLinePoints.append(linePoints[1])
+    cleanLinePoints.append(linePoints[0])
 
     # if either neighbouring point doesn't have a ball detection assume the detection in current point is poor
     for i in range(2, len(trackPoints) - 2):
@@ -289,10 +289,10 @@ def expandTrackGaps(trackPoints, linePoints):
             cleanTrackPoints.append((-1,-1,0))
             cleanLinePoints.append(cleanLinePoints[i-1])
     
-    cleanTrackPoints.append(trackPoints[-2])
+    cleanTrackPoints.append(trackPoints[-1])
     cleanTrackPoints.append(trackPoints[-1])
 
-    cleanLinePoints.append(linePoints[-2])
+    cleanLinePoints.append(linePoints[-1])
     cleanLinePoints.append(linePoints[-1])
 
     return cleanTrackPoints, cleanLinePoints

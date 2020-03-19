@@ -225,6 +225,7 @@ def playVideo():
                 if currVidOp.get() == 'Make Decision':
                     # expand gaps in track points and overwrite distorted linePoints
                     trackPoints, linePoints = calc.expandTrackGaps(trackPoints, linePoints)
+
     
                     # predicit missing points in track
                     predPoints = calc.fillTrackGaps(trackPoints)
