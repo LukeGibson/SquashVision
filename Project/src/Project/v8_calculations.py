@@ -3,7 +3,7 @@ import numpy as np
 import math
 from matplotlib import pyplot as plt
 import seaborn as sns
-
+import statistics as stats
 
 # display graphs for a given set of lists
 def displayGraphs(yValueList):
@@ -41,19 +41,46 @@ def calcContactFrames(gradRatePoints, deltaPoints):
 
     if contactGradRate != 0:
         # estimate the number of contact frames based on change on trajectory at point of contact
-        if contactGradRate < 0.1:
+        if contactGradRate < 0.095:
             contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1, contactIndex + 2]
-        elif contactGradRate >= 0.1 and contactGradRate < 0.16:
+        elif contactGradRate >= 0.095 and contactGradRate < 0.14:
             contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1]
-        elif contactGradRate >= 0.16:
-            contactFrames = [contactIndex, contactIndex + 1]      
+        elif contactGradRate >= 0.14:
+            contactFrames = [contactIndex - 1, contactIndex]
+
+        # calculate speed before and after impact
+        if contactIndex - 11 < 0:
+            deltaBefore = stats.median(deltaPoints[0 : contactIndex - 1])
+        else:
+            deltaBefore = stats.median(deltaPoints[contactIndex - 11 : contactIndex - 1])
+
+        if contactIndex + 11 > len(deltaPoints) - 1:
+            deltaAfter = stats.median(deltaPoints[contactIndex + 1:])
+        else:
+            deltaAfter = stats.median(deltaPoints[contactIndex + 1: contactIndex + 11])
+        
+        print("Delta Before:", deltaBefore, "Delta After:", deltaAfter, "Time Contact:", len(contactFrames), "Gradient Change:", contactGradRate)
+
+        # compression is proportional to the loss of KE over time - more energy lost over shorter time = greater compression
+        compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)
+
+        # percentage of radius of ball in contact with the wall
+        contactPercent = ((compDistance + 20) / 60) * 100
+
+        maxContactPercent = 95
+        minContactPercent = 50
+
+        if contactPercent > maxContactPercent:
+            contactPercent = maxContactPercent
+        if contactPercent < minContactPercent:
+            contactPercent = minContactPercent
 
     else:
         contactFrames = []
+        compDistance = 0
+        contactPercent = 0
 
-    print("Contact Frames:", contactFrames)
-
-    return contactFrames
+    return (contactFrames, contactPercent)
 
 
 # calculates the rate of gradient change of the line going into each point
@@ -171,7 +198,7 @@ def calcDeltaPoints(predPoints):
         delta = round(math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2)), 3)
 
         # if delta is 0 its because frame was repeated - use last frames delta
-        if delta == 0:
+        if delta == 0 or prevX == -1:
             delta = deltaPoints[i-1]
 
         deltaPoints.append(delta)

@@ -1,0 +1,8 @@
+TEST 12 - with radius of contact percentage against compression graph
+
+compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)
+
+
+ballContactPercent = ((compDistance + 20) / 60) * 100
+maxContactPercent = 95
+minContactPercent = 50

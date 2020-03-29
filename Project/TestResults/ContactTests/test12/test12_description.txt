@@ -1,0 +1,3 @@
+TEST 11 - with comrpession value being calculated and stored as well...
+
+compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)

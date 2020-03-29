@@ -1,0 +1,3 @@
+TEST 12 - with comrpession against delta before and number of contactFrames graph
+
+compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)

@@ -1,13 +1,13 @@
 test1
 
 
-Total MAE: 3.6621621621621623
+Total MAE: 3.7837837837837838
 
 
 Accuracy within error tollerence:
-  0 frames: 28.38
-  1 frames: 51.35
-  2 frames: 77.03
+  0 frames: 21.62
+  1 frames: 48.65
+  2 frames: 71.62
   3 frames: 83.78
   4 frames: 85.14
   5 frames: 86.49
@@ -15,12 +15,12 @@ Accuracy within error tollerence:
   7 frames: 86.49
   8 frames: 86.49
   9 frames: 86.49
-  10 frames: 86.49
+  10 frames: 87.84
 
 
 collection_1 MAE: 1.5
-  clip1: 0
-  clip2: 2
+  clip1: 1
+  clip2: 1
   clip3: 2
   clip4: 1
   clip5: 1
@@ -43,26 +43,26 @@ not_hitting_wall MAE: 0.0
   clip11: 0
 
 
-person_in_frame MAE: 1.8333333333333333
+person_in_frame MAE: 1.6666666666666667
   clip1: 2
   clip2: 3
   clip3: 0
   clip4: 2
-  clip5: 2
+  clip5: 1
   clip6: 2
 
 
-position_close_tilted MAE: 4.6
-  clip1: 246
+position_close_tilted MAE: 5.4
+  clip1: 244
   clip2: 0
-  clip3: 2
+  clip3: 3
   clip4: 0
-  clip5: 0
-  clip6: 0
+  clip5: 2
+  clip6: 3
   clip7: 1
-  clip8: 1
-  clip10: 2
-  clip11: 124
+  clip8: 2
+  clip10: 3
+  clip11: 122
 
 
 position_far_low MAE: 3.272727272727273
@@ -79,41 +79,41 @@ position_far_low MAE: 3.272727272727273
   clip12: 2
 
 
-position_mid_tilted MAE: 1.5
-  clip1: 0
-  clip2: 0
+position_mid_tilted MAE: 1.625
+  clip1: 1
+  clip2: 1
   clip3: 2
-  clip4: 2
+  clip4: 1
   clip5: 1
   clip6: 2
   clip7: 3
   clip8: 2
 
 
-regular MAE: 8.5
+regular MAE: 8.875
   clip1: 1
-  clip2: 1
+  clip2: 3
   clip5: 3
   clip6: 38
-  clip7: 58
-  clip8: 1
+  clip7: 57
+  clip8: 2
   clip9: 2
-  clip10: 29
+  clip10: 32
 
 
 slow_lob_shot MAE: 6.25
   clip1: 60
-  clip2: 2
+  clip2: 1
   clip3: 2
-  clip4: 1
+  clip4: 2
 
 
-tight_angle MAE: 7.625
+tight_angle MAE: 7.375
   clip1: 3
   clip2: 0
-  clip3: 12
+  clip3: 10
   clip4: 2
   clip5: 0
-  clip6: 87
+  clip6: 89
   clip7: 4
   clip8: 45

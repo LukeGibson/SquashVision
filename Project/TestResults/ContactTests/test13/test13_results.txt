@@ -1,0 +1,119 @@
+test13
+
+
+Total MAE: 1.2567567567567568
+
+
+Accuracy within error tollerence:
+  0 frames: 60.81
+  1 frames: 90.54
+  2 frames: 90.54
+  3 frames: 91.89
+  4 frames: 94.59
+  5 frames: 94.59
+  6 frames: 94.59
+  7 frames: 95.95
+  8 frames: 95.95
+  9 frames: 95.95
+  10 frames: 95.95
+
+
+collection_1 MAE: 0.75
+  clip1: 0
+  clip2: 3
+  clip3: 1
+  clip4: 0
+  clip5: 0
+  clip6: 1
+  clip7: 1
+  clip8: 0
+
+
+not_hitting_wall MAE: 0.0
+  clip1: 0
+  clip2: 0
+  clip3: 0
+  clip4: 0
+  clip5: 0
+  clip6: 0
+  clip7: 0
+  clip8: 0
+  clip9: 0
+  clip10: 0
+  clip11: 0
+
+
+person_in_frame MAE: 0.3333333333333333
+  clip1: 1
+  clip2: 1
+  clip3: 0
+  clip4: 0
+  clip5: 0
+  clip6: 0
+
+
+position_close_tilted MAE: 4.2
+  clip1: 244
+  clip2: 0
+  clip3: 0
+  clip4: 0
+  clip5: 0
+  clip6: 0
+  clip7: 0
+  clip8: 1
+  clip10: 1
+  clip11: 122
+
+
+position_far_low MAE: 1.4545454545454546
+  clip1: 0
+  clip2: 0
+  clip4: 1
+  clip5: 0
+  clip6: 7
+  clip7: 1
+  clip8: 1
+  clip9: 4
+  clip10: 1
+  clip11: 0
+  clip12: 1
+
+
+position_mid_tilted MAE: 0.375
+  clip1: 0
+  clip2: 0
+  clip3: 1
+  clip4: 0
+  clip5: 0
+  clip6: 0
+  clip7: 1
+  clip8: 1
+
+
+regular MAE: 0.5
+  clip1: 1
+  clip2: 0
+  clip5: 1
+  clip6: 1
+  clip7: 0
+  clip8: 0
+  clip9: 0
+  clip10: 1
+
+
+slow_lob_shot MAE: 1.25
+  clip1: 1
+  clip2: 0
+  clip3: 0
+  clip4: 4
+
+
+tight_angle MAE: 1.875
+  clip1: 0
+  clip2: 0
+  clip3: 13
+  clip4: 0
+  clip5: 0
+  clip6: 1
+  clip7: 1
+  clip8: 0

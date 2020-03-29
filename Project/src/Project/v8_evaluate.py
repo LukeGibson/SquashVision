@@ -4,9 +4,11 @@ import math
 import cv2
 import v8_calculations as calc
 import csv
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from random import randint
 
 
 # returns the contact frames for a given path
@@ -144,13 +146,15 @@ def getContactFrames(clipPath):
     trackPoints, linePoints = calc.expandTrackGaps(trackPoints, linePoints)
     predPoints = calc.fillTrackGaps(trackPoints)
 
+    deltaPoints = calc.calcDeltaPoints(predPoints)
+
     gradPoints = calc.calcPointGrad(predPoints)
     gradPoints = calc.removeListNoise(gradPoints)
     rateGradPoints = calc.calcPointRateGrad(gradPoints)
-    contactFrames = calc.calcContactFrames(rateGradPoints, deltaPoints)
+    # take compression distance 
+    contactFrames, compression = calc.calcContactFrames(rateGradPoints, deltaPoints) # compression graph
 
-    return contactFrames
-
+    return (contactFrames, compression) # compression graph
 
 
 def genCollectionResults(collectionName, testName):
@@ -169,12 +173,16 @@ def genCollectionResults(collectionName, testName):
     
     # stores the list of contact frames for each clip
     clipContactFrames = []
+    clipCompressions = []  # compression graph
 
     for clip in clipFiles:
         print("Calculating Contact:", collectionName, clip)
         clipPath = clipDirPath + clip
-        contactFrames = getContactFrames(clipPath)
+        # take compression distance
+        contactFrames, compression = getContactFrames(clipPath) # compression graph
         clipContactFrames.append(contactFrames)
+        clipCompressions.append(compression)  # compression graph
+        
 
     # generate csv rows
     rows = []
@@ -188,11 +196,13 @@ def genCollectionResults(collectionName, testName):
         if len(clipContactFrames[i]) == 0:
             frameStart = 0
             frameEnd = 0
+            compression = 0 # compression graph
         else:
             frameStart = clipContactFrames[i][0]
             frameEnd = clipContactFrames[i][-1]
+            compDistance, radiusPercent = clipCompressions[i] # compression graph
 
-        rows.append([clipNum, frameStart, frameEnd])
+        rows.append([clipNum, frameStart, frameEnd, compression])  # compression graph
     
     # sort into accending clip number order
     rows = sorted(rows, key = lambda x: x[0])
@@ -216,6 +226,7 @@ def genCollectionResults(collectionName, testName):
 def compearResult(testName, collections):
     outputFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\'  + testName + '_results.txt'
     allFrameDiffs = []
+    allCompressions = []  # compression graph
 
     for collectionName in collections:
         resultFilePath = 'C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\csv\\' + collectionName + '.csv'
@@ -224,23 +235,26 @@ def compearResult(testName, collections):
         # read truth and test csv for configuration
         truthRows = []
         resultRows = []
+        colCompressions = []
 
         for line in open(resultFilePath):
             row = line.split(',')
             clipNum = int(row[0])
             firstFrame = int(row[1])
-            lastFrame = int(row[2][:-1])
-
-            resultRows.append((clipNum, firstFrame, lastFrame))
+            lastFrame = int(row[2])
+            compression = float(row[3]) # compression graph
+            
+            colCompressions.append(compression)  # compression graph
+            resultRows.append((clipNum, firstFrame, lastFrame)) 
         
         for line in open(truthFilePath):
             row = line.split(',')
             clipNum = int(row[0])
             firstFrame = int(row[1])
-            lastFrame = int(row[2][:-1])
+            lastFrame = int(row[2])
 
             truthRows.append((clipNum, firstFrame, lastFrame))
-
+        
         colFrameDiffs = []
 
         # compear each clip
@@ -255,6 +269,7 @@ def compearResult(testName, collections):
                 colFrameDiffs.append((rClip, frameDiff))
         
         allFrameDiffs.append(colFrameDiffs)
+        allCompressions.append((collectionName, colCompressions))  # compression graph
         print("Compeared:", testName, collectionName)
 
 
@@ -346,6 +361,27 @@ def compearResult(testName, collections):
     plt.show()
     fig.savefig('C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\' + testName + '_accuracy.png', dpi=fig.dpi)
 
+    # create a compression plot
+    xPoints = []
+    yPoints = []
+    for col, colCompressions in allCompressions:
+        for compression in colCompressions:
+            xPoints.append(col)
+            yPoints.append(compression)
+    
+    fig = plt.figure(figsize=(16,9))
+    plt.scatter(xPoints, yPoints)
+
+    plt.xlabel('Collection')
+    plt.ylabel('Radius of Contact %')
+
+    plt.grid(b=True, which='both', linestyle='--')
+
+    plt.xticks(xPoints)
+
+    plt.show()
+    fig.savefig('C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\ContactTests\\' + testName + '\\' + testName + '_compression4.png', dpi=fig.dpi)
+
 
 # RUN
 
@@ -361,7 +397,7 @@ collections = [
     "tight_angle"
 ]
 
-test = "test7"
+test = "test14"
 
 for col in collections:
     genCollectionResults(col, test)

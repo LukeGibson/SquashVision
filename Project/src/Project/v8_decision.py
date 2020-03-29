@@ -226,7 +226,6 @@ def playVideo():
                     # expand gaps in track points and overwrite distorted linePoints
                     trackPoints, linePoints = calc.expandTrackGaps(trackPoints, linePoints)
 
-    
                     # predicit missing points in track
                     predPoints = calc.fillTrackGaps(trackPoints)
 
@@ -242,11 +241,13 @@ def playVideo():
                     deltaPoints = calc.calcDeltaPoints(predPoints)
                     radiusPoints = [x[2] for x in predPoints]
 
+                    contactFrames, radiusContactPercent = calc.calcContactFrames(rateGradPoints, deltaPoints)
+                    print("Contact Frames:", contactFrames)
+                    print("Radius Contact Percentage:", radiusContactPercent)
+
                     # display point features as a graph
                     yValueList = [(anglePoints, "Angle"), (rateAnglePoints, "Angle Change"), (gradPoints, "Gradient"), (rateGradPoints, "Gradient Change"), (deltaPoints, "Delta"), (radiusPoints, "Radius")]
                     calc.displayGraphs(yValueList)
-
-                    contactFrames = calc.calcContactFrames(rateGradPoints, deltaPoints)
 
                     # use predPoints, linePoints and contactFrames to calculate decision in each frame
                     currVidOp.set('Make Decision 2')
@@ -335,7 +336,7 @@ def decisionVid(frame):
     ball = np.transpose(np.where(ballMask==255))
 
     # check if ball is on/above line
-    ballOut = isBallOut(ball, line)
+    # ballOut = isBallOut(ball, line)
 
     # create colored masks for output
     lineMaskCol = np.zeros((height, width, 3), np.uint8)
