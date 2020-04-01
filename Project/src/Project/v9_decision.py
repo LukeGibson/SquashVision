@@ -167,7 +167,7 @@ def stopOperation():
 
 
 def operateVid():
-    global currVidFile, currCapture, bgSubMOG, currVidOp, stop, nextFrame, lastSeenBall, predPoints, trackPoints, linePoints, anglePoints, rateAnglePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints
+    global currVidFile, currCapture, bgSubMOG, currVidOp, stop, nextFrame, lastSeenBall, predPoints, trackPoints, linePoints, anglePoints, rateAnglePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb
 
     # set stop to true
     stop = False
@@ -200,6 +200,7 @@ def operateVid():
 
     # reset contactPrints
     contactPrints = []
+    outProb = 0
 
     # stores the current frame index - to reference list values
     frameIndex = 0
@@ -299,8 +300,78 @@ def isBallOut(ball, line):
     return False
 
 
+# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
+def probOut(contactMask, lineMask):
+
+    # update lineMask such that every pixel above line is white
+    lineMask2 = cv2.transpose(lineMask)
+    
+    for x in range(len(lineMask2)):
+        col = lineMask2[x]
+        lineMinY = -1
+
+        for y in range(len(col)):
+            # find the start of the line
+            if lineMask2[x][-y] != 0:
+                lineMinY = y
+                break
+        
+        # add probabilities 
+        if lineMinY != -1:
+            under = [0] * (lineMinY - 3)
+            outer = [85] * 3
+            inner = [170] * 2
+            over = [255] * (len(col) - lineMinY - 2)
+
+            newCol = over + inner + outer + under
+
+            lineMask2[x] = newCol
+
+    lineMask2 = cv2.transpose(lineMask2)
+
+    # give contactMask probability
+    kernelSmall = np.ones((3,3), np.uint8)
+    contactMaskInner = cv2.erode(contactMask, kernelSmall)
+
+    # check Inner maskis not dilated to nothing
+    count = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
+    if count < 5:
+        print("ContactMaskInner was erouded to much - cotained", count, "pixels")
+        contactMaskInner = cv2.dilate(contactMask, kernelSmall)
+
+    kernelLarge = np.ones((5,5), np.uint8)
+    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
+
+    contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
+    contactMask2 = cv2.addWeighted(contactMask2, 0.666, contactMask, 0.333, 0)
+
+    probOutMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
+
+    return probOutMask
+    
+
+# given the combined probability mask calculate the probability the ball was out
+def calcOutProb(probMask):
+    probMaskFlat = np.array(probMask).flatten()
+    maxValue = max(probMaskFlat)
+
+    if maxValue < 130:
+        outProb = 0
+    elif maxValue < 172:
+        outProb = 0.5
+    elif maxValue < 214:
+        outProb = 0.75
+    elif maxValue < 257:
+        outProb = 1
+    else:
+        print("Prob Calc Error: maxValue > 255")
+        outProb = -1
+
+    return outProb
+
+
 def decisionVid(frame):
-    global predPoints, linePoints, frameIndex, contactFrames, contactPrints
+    global predPoints, linePoints, frameIndex, contactFrames, contactPrints, outProb
 
     # get frame dimensions
     height, width = frame.shape[:2]
@@ -356,11 +427,21 @@ def decisionVid(frame):
     line = np.transpose(np.where(lineMask==255))
     contact = np.transpose(np.where(contactMask==255))
 
+    # OLD
     # check if ball is on/above line
-    ballOut = isBallOut(contact, line)
+    # ballOut = isBallOut(contact, line)
 
+    # Find if ball is out
+    if frameIndex in [i[0] for i in contactFrames]:
+        # calculate the probability the ball was out
+        probMask = probOut(contactMask, lineMask)
+        newOutProb = calcOutProb(probMask)
 
-
+        # update outProb if the new frame probability is larger
+        if newOutProb > outProb:
+            outProb = newOutProb
+    
+    
     # create colored masks for output
     lineMaskCol = np.zeros((height, width, 3), np.uint8)
     cv2.drawContours(lineMaskCol, [lineData], -1, (255,0,0), 1)
@@ -380,15 +461,15 @@ def decisionVid(frame):
         cv2.putText(output, "Contact: True", (20,70), font, 2, (255, 0, 0), 2, cv2.LINE_AA)
     else:
         cv2.putText(output, "Contact: False", (20,70), font, 2, (0, 255, 0), 2, cv2.LINE_AA)
-    if ballOut:
-        cv2.putText(output, "Decision: OUT", (20,140), font, 2, (255, 0, 0), 2, cv2.LINE_AA)
+        
+    if outProb >= 0.5:
+        cv2.putText(output, "Prob OUT: " + str(outProb * 100) +"%", (20,140), font, 2, (255, 0, 0), 2, cv2.LINE_AA)
     else:
-        cv2.putText(output, "Decision: In", (20,140), font, 2, (0, 255, 0), 2, cv2.LINE_AA)
+        cv2.putText(output, "Prob OUT: " + str(outProb * 100) +"%", (20,140), font, 2, (0, 255, 0), 2, cv2.LINE_AA)
     
     cv2.putText(output, "Frame: " + str(frameIndex), (20,210), font, 2, (255, 255, 255), 2, cv2.LINE_AA)
 
     frameIndex += 1
-    
     
     return output
 
@@ -561,6 +642,7 @@ lastSeenBall = (-1,-1)
 
 # stores the accumulating contact prints of ball
 contactPrints = []
+outProb = 0
 
 showA = True
 showB = True
