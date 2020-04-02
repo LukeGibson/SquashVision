@@ -6,6 +6,7 @@ import numpy as np
 import tkinter as tk
 import time
 import math
+import numba as nb
 
 import v9_calculations as calc
 
@@ -300,38 +301,43 @@ def isBallOut(ball, line):
     return False
 
 
-# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
-def probOut(contactMask, lineMask):
-
-    # update lineMask such that every pixel above line is white
-    lineMask2 = cv2.transpose(lineMask)
-    
-    for x in range(len(lineMask2)):
-        col = lineMask2[x]
+@nb.jit
+def convertLineMask(lineMask):
+    for x in range(len(lineMask)):
+        col = lineMask[x]
         lineMinY = -1
 
         for y in range(len(col)):
             # find the start of the line
-            if lineMask2[x][-y] != 0:
+            if lineMask[x][-y] != 0:
                 lineMinY = y
                 break
         
         # add probabilities 
         if lineMinY != -1:
             under = [0] * (lineMinY - 3)
-            outer = [85] * 3
-            inner = [170] * 2
-            over = [255] * (len(col) - lineMinY - 2)
+            outer = [80] * 3
+            inner = [160] * 2
+            over = [240] * (len(col) - lineMinY - 2)
 
             newCol = over + inner + outer + under
+            lineMask[x] = newCol
 
-            lineMask2[x] = newCol
+    return lineMask
 
+
+# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
+def probOut(contactMask, lineMask):
+    # convert line mask and add probability
+    lineMask2 = cv2.transpose(lineMask)
+    lineMask2 = convertLineMask(lineMask2)
     lineMask2 = cv2.transpose(lineMask2)
 
-    # give contactMask probability
+    # add contactMask probability
     kernelSmall = np.ones((3,3), np.uint8)
     contactMaskInner = cv2.erode(contactMask, kernelSmall)
+    kernelLarge = np.ones((5,5), np.uint8)
+    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
 
     # check Inner maskis not dilated to nothing
     count = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
@@ -339,15 +345,18 @@ def probOut(contactMask, lineMask):
         print("ContactMaskInner was erouded to much - cotained", count, "pixels")
         contactMaskInner = cv2.dilate(contactMask, kernelSmall)
 
-    kernelLarge = np.ones((5,5), np.uint8)
-    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
+    # convert contactMasks values of 255 to 240
+    contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
+    contactMaskInner = cv2.addWeighted(contactMaskInner, (8/17), contactMaskInner, (8/17), 0)
+    contactMaskOuter = cv2.addWeighted(contactMaskOuter, (8/17), contactMaskOuter, (8/17), 0)
 
+    # sum together the component contactMask's
     contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
-    contactMask2 = cv2.addWeighted(contactMask2, 0.666, contactMask, 0.333, 0)
+    contactMask2 = cv2.addWeighted(contactMask2, (2/3), contactMask, (1/3), 0)
 
-    probOutMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
+    probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
 
-    return probOutMask
+    return probMask
     
 
 # given the combined probability mask calculate the probability the ball was out
@@ -355,16 +364,16 @@ def calcOutProb(probMask):
     probMaskFlat = np.array(probMask).flatten()
     maxValue = max(probMaskFlat)
 
-    if maxValue < 130:
+    if maxValue <= 120:
         outProb = 0
-    elif maxValue < 172:
+    elif maxValue <= 160:
         outProb = 0.5
-    elif maxValue < 214:
+    elif maxValue <= 200:
         outProb = 0.75
-    elif maxValue < 257:
+    elif maxValue <= 240:
         outProb = 1
     else:
-        print("Prob Calc Error: maxValue > 255")
+        print("Prob Calc Error: maxValue > 240")
         outProb = -1
 
     return outProb
@@ -423,14 +432,6 @@ def decisionVid(frame):
     lineMask = np.zeros((height, width), np.uint8)
     cv2.drawContours(lineMask, [lineData], -1, 255, 1)
 
-    # get coordinates of the line and ball
-    line = np.transpose(np.where(lineMask==255))
-    contact = np.transpose(np.where(contactMask==255))
-
-    # OLD
-    # check if ball is on/above line
-    # ballOut = isBallOut(contact, line)
-
     # Find if ball is out
     if frameIndex in [i[0] for i in contactFrames]:
         # calculate the probability the ball was out
@@ -452,7 +453,6 @@ def decisionVid(frame):
     # add colered masks together
     output = cv2.add(ballMaskCol, lineMaskCol)
     output = cv2.add(output, contactMaskCol, 1)
-
 
     # write text on output
     font = cv2.FONT_HERSHEY_SIMPLEX
