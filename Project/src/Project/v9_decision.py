@@ -301,6 +301,7 @@ def isBallOut(ball, line):
     return False
 
 
+# fast function to fill lineMask above the line
 @nb.jit
 def convertLineMask(lineMask):
     for x in range(len(lineMask)):
@@ -340,10 +341,11 @@ def probOut(contactMask, lineMask):
     contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
 
     # check Inner maskis not dilated to nothing
-    count = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
-    if count < 5:
-        print("ContactMaskInner was erouded to much - cotained", count, "pixels")
+    contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
+    if contactInnerSize < 5:
+        print("ContactMaskInner was erouded to much - cotained", contactInnerSize, "pixels")
         contactMaskInner = cv2.dilate(contactMask, kernelSmall)
+        contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
 
     # convert contactMasks values of 255 to 240
     contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
@@ -356,27 +358,58 @@ def probOut(contactMask, lineMask):
 
     probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
 
-    return probMask
+    return (probMask, contactInnerSize)
     
 
 # given the combined probability mask calculate the probability the ball was out
-def calcOutProb(probMask):
+def calcOutProb(probMask, contactInnerSize):
     probMaskFlat = np.array(probMask).flatten()
     maxValue = max(probMaskFlat)
+    maxCount = np.count_nonzero(probMaskFlat == maxValue)
 
+    print("MaxCount:", maxCount, "contactInnerSize:", contactInnerSize)
+
+    # calculates the min and max probabilty depending on the max value in the probMask
     if maxValue <= 120:
-        outProb = 0
+        thresholdA = 0
+        thresholdB = 0
     elif maxValue <= 160:
-        outProb = 0.5
+        thresholdA = 0
+        thresholdB = 0.5
     elif maxValue <= 200:
-        outProb = 0.75
+        thresholdA = 0.5
+        thresholdB = 0.75
     elif maxValue <= 240:
-        outProb = 1
+        thresholdA = 0.75
+        thresholdB = 1
     else:
         print("Prob Calc Error: maxValue > 240")
-        outProb = -1
+        thresholdA = -1
+        thresholdB = -1    
+    
+    # only calculate the probabilty if thesholdB > 0
+    if thresholdB > 0:
 
-    return outProb
+        # error check
+        if maxCount > contactInnerSize:
+            print("Prob Calc Error: maxCount > contactInnerSize")
+            maxCount = contactInnerSize
+
+        # the amount probabilty can vary between min and max
+        difference = thresholdB - thresholdA
+        
+        # calculate percentage of inner pixels that are at this max value
+        proprotionMaxContact =  maxCount / contactInnerSize
+        print("proportionMaxContact", proprotionMaxContact)
+
+        # probabilty is closer to thresholdB the greater proportion of the pixels were at the max value
+        probability = math.ceil(thresholdA + (difference * proprotionMaxContact))
+    else:
+        probability = 0
+
+    print("prob", probability)
+
+    return probability
 
 
 def decisionVid(frame):
@@ -432,11 +465,12 @@ def decisionVid(frame):
     lineMask = np.zeros((height, width), np.uint8)
     cv2.drawContours(lineMask, [lineData], -1, 255, 1)
 
+
     # Find if ball is out
     if frameIndex in [i[0] for i in contactFrames]:
         # calculate the probability the ball was out
-        probMask = probOut(contactMask, lineMask)
-        newOutProb = calcOutProb(probMask)
+        probMask, contactInnerSize = probOut(contactMask, lineMask)
+        newOutProb = calcOutProb(probMask, contactInnerSize)
 
         # update outProb if the new frame probability is larger
         if newOutProb > outProb:
