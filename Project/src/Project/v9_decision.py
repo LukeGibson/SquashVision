@@ -291,127 +291,6 @@ def playVideo():
         frameIndex = 0
 
 
-# check all coordinates of ball and line borders to see if any coordinate is on/above line
-def isBallOut(ball, line):
-    for by, bx in ball:
-        for ly, lx in line:
-            if bx == lx and by <= ly:
-                return True
-    
-    return False
-
-
-# fast function to fill lineMask above the line
-@nb.jit
-def convertLineMask(lineMask):
-    for x in range(len(lineMask)):
-        col = lineMask[x]
-        lineMinY = -1
-
-        for y in range(len(col)):
-            # find the start of the line
-            if lineMask[x][-y] != 0:
-                lineMinY = y
-                break
-        
-        # add probabilities 
-        if lineMinY != -1:
-            under = [0] * (lineMinY - 3)
-            outer = [80] * 3
-            inner = [160] * 2
-            over = [240] * (len(col) - lineMinY - 2)
-
-            newCol = over + inner + outer + under
-            lineMask[x] = newCol
-
-    return lineMask
-
-
-# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
-def probOut(contactMask, lineMask):
-    # convert line mask and add probability
-    lineMask2 = cv2.transpose(lineMask)
-    lineMask2 = convertLineMask(lineMask2)
-    lineMask2 = cv2.transpose(lineMask2)
-
-    # add contactMask probability
-    kernelSmall = np.ones((3,3), np.uint8)
-    contactMaskInner = cv2.erode(contactMask, kernelSmall)
-    kernelLarge = np.ones((5,5), np.uint8)
-    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
-
-    # check Inner maskis not dilated to nothing
-    contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
-    if contactInnerSize < 5:
-        print("ContactMaskInner was erouded to much - cotained", contactInnerSize, "pixels")
-        contactMaskInner = cv2.dilate(contactMask, kernelSmall)
-        contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
-
-    # convert contactMasks values of 255 to 240
-    contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
-    contactMaskInner = cv2.addWeighted(contactMaskInner, (8/17), contactMaskInner, (8/17), 0)
-    contactMaskOuter = cv2.addWeighted(contactMaskOuter, (8/17), contactMaskOuter, (8/17), 0)
-
-    # sum together the component contactMask's
-    contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
-    contactMask2 = cv2.addWeighted(contactMask2, (2/3), contactMask, (1/3), 0)
-
-    probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
-
-    return (probMask, contactInnerSize)
-    
-
-# given the combined probability mask calculate the probability the ball was out
-def calcOutProb(probMask, contactInnerSize):
-    probMaskFlat = np.array(probMask).flatten()
-    maxValue = max(probMaskFlat)
-    maxCount = np.count_nonzero(probMaskFlat == maxValue)
-
-    print("MaxCount:", maxCount, "contactInnerSize:", contactInnerSize)
-
-    # calculates the min and max probabilty depending on the max value in the probMask
-    if maxValue <= 120:
-        thresholdA = 0
-        thresholdB = 0
-    elif maxValue <= 160:
-        thresholdA = 0
-        thresholdB = 0.5
-    elif maxValue <= 200:
-        thresholdA = 0.5
-        thresholdB = 0.75
-    elif maxValue <= 240:
-        thresholdA = 0.75
-        thresholdB = 1
-    else:
-        print("Prob Calc Error: maxValue > 240")
-        thresholdA = -1
-        thresholdB = -1    
-    
-    # only calculate the probabilty if thesholdB > 0
-    if thresholdB > 0:
-
-        # error check
-        if maxCount > contactInnerSize:
-            print("Prob Calc Error: maxCount > contactInnerSize")
-            maxCount = contactInnerSize
-
-        # the amount probabilty can vary between min and max
-        difference = thresholdB - thresholdA
-        
-        # calculate percentage of inner pixels that are at this max value
-        proprotionMaxContact =  maxCount / contactInnerSize
-        print("proportionMaxContact", proprotionMaxContact)
-
-        # probabilty is closer to thresholdB the greater proportion of the pixels were at the max value
-        probability = math.ceil(thresholdA + (difference * proprotionMaxContact))
-    else:
-        probability = 0
-
-    print("prob", probability)
-
-    return probability
-
-
 def decisionVid(frame):
     global predPoints, linePoints, frameIndex, contactFrames, contactPrints, outProb
 
@@ -469,8 +348,7 @@ def decisionVid(frame):
     # Find if ball is out
     if frameIndex in [i[0] for i in contactFrames]:
         # calculate the probability the ball was out
-        probMask, contactInnerSize = probOut(contactMask, lineMask)
-        newOutProb = calcOutProb(probMask, contactInnerSize)
+        probMask, newOutProb = calc.probOut(contactMask, lineMask)
 
         # update outProb if the new frame probability is larger
         if newOutProb > outProb:
@@ -497,7 +375,7 @@ def decisionVid(frame):
         cv2.putText(output, "Contact: False", (20,70), font, 2, (0, 255, 0), 2, cv2.LINE_AA)
         
     if outProb >= 0.5:
-        cv2.putText(output, "Prob OUT: " + str(outProb * 100) +"%", (20,140), font, 2, (255, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(output, "Prob OUT: " + str(round(outProb * 100, 0)) +"%", (20,140), font, 2, (255, 0, 0), 2, cv2.LINE_AA)
     else:
         cv2.putText(output, "Prob OUT: " + str(outProb * 100) +"%", (20,140), font, 2, (0, 255, 0), 2, cv2.LINE_AA)
     
@@ -506,7 +384,6 @@ def decisionVid(frame):
     frameIndex += 1
     
     return output
-
 
 
 def generateTrackVid(frame):
@@ -624,8 +501,8 @@ def generateTrackVid(frame):
                 # draw ball cloest possbile contour (if found within a threshold)
                 ((x, y), radius) = cv2.minEnclosingCircle(closestCon)
 
-                M = cv2.moments(closestCon)
-                center = ((int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])))
+                # M = cv2.moments(closestCon)
+                # center = ((int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])))
                 cv2.circle(outputFrame, (int(x), int(y)), int(radius), 255, -1)
 
                 trackPoints.append((int(x), int(y), int(radius)))

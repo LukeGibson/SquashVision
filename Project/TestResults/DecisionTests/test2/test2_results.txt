@@ -1,0 +1,114 @@
+test2
+
+
+Total MAE: 0.0531
+Total Decision Accuracy: 95.95
+
+
+Accuracy within error tollerence:
+  0.0 prob tollerence: 82.43
+  0.1 prob tollerence: 95.95
+  0.2 prob tollerence: 95.95
+  0.3 prob tollerence: 95.95
+  0.4 prob tollerence: 95.95
+
+
+collection_1 MAE: 0.0 - 100.0
+  clip1: 0.0 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.0 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.0 - Correct
+
+
+not_hitting_wall MAE: 0.0364 - 100.0
+  clip1: 0.1 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.1 - Correct
+  clip5: 0.1 - Correct
+  clip6: 0.0 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.0 - Correct
+  clip9: 0.0 - Correct
+  clip10: 0.0 - Correct
+  clip11: 0.1 - Correct
+
+
+person_in_frame MAE: 0.0 - 100.0
+  clip1: 0.0 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.0 - Correct
+
+
+position_close_tilted MAE: 0.11 - 90.0
+  clip1: 0.0 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.0 - Correct
+  clip7: 0.1 - Correct
+  clip8: 0.0 - Correct
+  clip10: 0.0 - Correct
+  clip11: 1.0 - Incorrect
+
+
+position_far_low MAE: 0.0 - 100.0
+  clip1: 0.0 - Correct
+  clip2: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.0 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.0 - Correct
+  clip9: 0.0 - Correct
+  clip10: 0.0 - Correct
+  clip11: 0.0 - Correct
+  clip12: 0.0 - Correct
+
+
+position_mid_tilted MAE: 0.25 - 75.0
+  clip1: 1.0 - Incorrect
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 1.0 - Incorrect
+  clip6: 0.0 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.0 - Correct
+
+
+regular MAE: 0.025 - 100.0
+  clip1: 0.1 - Correct
+  clip2: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.1 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.0 - Correct
+  clip9: 0.0 - Correct
+  clip10: 0.0 - Correct
+
+
+slow_lob_shot MAE: 0.0325 - 100.0
+  clip1: 0.03 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.1 - Correct
+
+
+tight_angle MAE: 0.0125 - 100.0
+  clip1: 0.0 - Correct
+  clip2: 0.0 - Correct
+  clip3: 0.0 - Correct
+  clip4: 0.0 - Correct
+  clip5: 0.0 - Correct
+  clip6: 0.0 - Correct
+  clip7: 0.0 - Correct
+  clip8: 0.1 - Correct

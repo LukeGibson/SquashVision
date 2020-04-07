@@ -4,6 +4,126 @@ import math
 from matplotlib import pyplot as plt
 import seaborn as sns
 import statistics as stats
+import numba as nb
+
+
+# fast function to fill lineMask above the line
+@nb.jit
+def convertLineMask(lineMask):
+    for x in range(len(lineMask)):
+        col = lineMask[x]
+        lineMinY = -1
+
+        for y in range(len(col)):
+            # find the start of the line
+            if lineMask[x][-y] != 0:
+                lineMinY = y
+                break
+        
+        # add probabilities 
+        if lineMinY != -1:
+            under = [0] * (lineMinY - 3)
+            outer = [80] * 3
+            inner = [160] * 2
+            over = [240] * (len(col) - lineMinY - 2)
+
+            newCol = over + inner + outer + under
+            lineMask[x] = newCol
+
+    return lineMask
+
+
+# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
+def probOut(contactMask, lineMask):
+    # convert line mask and add probability
+    lineMask2 = cv2.transpose(lineMask)
+    lineMask2 = convertLineMask(lineMask2)
+    lineMask2 = cv2.transpose(lineMask2)
+
+    # add contactMask probability
+    kernelSmall = np.ones((3,3), np.uint8)
+    contactMaskInner = cv2.erode(contactMask, kernelSmall)
+    kernelLarge = np.ones((5,5), np.uint8)
+    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
+
+    contactOuterSize = np.count_nonzero(np.array(contactMaskOuter).flatten() == 255)
+    contactSize = np.count_nonzero(np.array(contactMask).flatten() == 255)
+
+    # check Inner maskis not dilated to nothing
+    contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
+    if contactInnerSize < 5:
+        print("ContactMaskInner was erouded to much - contained", contactInnerSize, "pixels")
+        contactMaskInner = contactMask
+        contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
+        print("ContactMaskInner set to contactMask - contains", contactInnerSize, "pixels")
+
+    # convert contactMasks values of 255 to 240
+    contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
+    contactMaskInner = cv2.addWeighted(contactMaskInner, (8/17), contactMaskInner, (8/17), 0)
+    contactMaskOuter = cv2.addWeighted(contactMaskOuter, (8/17), contactMaskOuter, (8/17), 0)
+
+    # sum together the component contactMask's
+    contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
+    contactMask2 = cv2.addWeighted(contactMask2, (2/3), contactMask, (1/3), 0)
+
+    probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
+
+
+    # use masks to calculate the probability the shot was out
+    probMaskFlat = np.array(probMask).flatten()
+    maxValue = max(probMaskFlat)
+    maxCount = np.count_nonzero(probMaskFlat == maxValue)
+
+    # calculates the min and max probabilty depending on the max value in the probMask
+    # set largest number of contact pixels that could create maxValue
+    if maxValue <= 120:
+        thresholdA = 0
+        thresholdB = 0
+        trueContactSize = 0
+    elif maxValue <= 160:
+        thresholdA = 0
+        thresholdB = 0.66
+        trueContactSize = contactOuterSize - contactSize
+    elif maxValue <= 200:
+        thresholdA = 0.66
+        thresholdB = 0.83
+        trueContactSize = contactSize - contactInnerSize
+    elif maxValue <= 240:
+        thresholdA = 0.83
+        thresholdB = 1
+        trueContactSize = contactInnerSize
+    else:
+        print("Prob Calc Error: maxValue > 240")
+        thresholdA = -1
+        thresholdB = -1    
+    
+    
+    print("MaxValue:", maxValue,"MaxCount:", maxCount, "trueContactSize:", trueContactSize)
+
+    # only calculate the probabilty if thesholdB > 0
+    if thresholdB > 0:
+
+        # error check
+        if maxCount > trueContactSize:
+            print("Prob Calc Error: maxCount > trueContactSize")
+            trueContactSize = maxCount
+
+        # the amount probabilty can vary between min and max
+        difference = thresholdB - thresholdA
+        
+        # calculate percentage of inner pixels that are at this max value
+        proprotionMaxContact =  maxCount / trueContactSize
+        print("proportionMaxContact", proprotionMaxContact)
+
+        # probabilty is closer to thresholdB the greater proportion of the pixels were at the max value
+        probability = round(thresholdA + (difference * proprotionMaxContact), 2)
+    else:
+        probability = 0
+
+    print("prob", probability)
+
+    return (probMask, probability)
+
 
 # display graphs for a given set of lists
 def displayGraphs(yValueList):
