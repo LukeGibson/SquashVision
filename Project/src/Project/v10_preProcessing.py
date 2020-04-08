@@ -1,4 +1,203 @@
+import cv2
 import math
+import numpy as np
+import statistics as stats
+
+
+def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
+    # generate output image
+    height, width = frame.shape[:2]
+    outputFrame = np.zeros((height,width), np.uint8)
+
+
+    ## Generate line points
+
+
+    # threshold on red color
+    lowColor = (0,0,75)
+    highColor = (50,50,135)
+    mask = cv2.inRange(frame, lowColor, highColor)
+
+    kernel = np.ones((7,7), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # to join line contours objects
+    mask = cv2.dilate(mask, kernel,iterations=4)
+    mask = cv2.erode(mask, kernel, iterations=4)
+
+    # get contours
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours) == 2:
+        contours = contours[0]
+    else:
+        contours = contours[1]
+    
+    largestSpan = 0
+    largestSpanCon = None
+    
+    # find contour with largest horizontail span - a feature of the outliney
+    for c in contours:
+        leftmost = (c[c[:,:,0].argmin()][0])[0]
+        rightmost = (c[c[:,:,0].argmax()][0])[0]
+        span = abs(leftmost - rightmost)
+
+        if span > largestSpan:
+            largestSpan = span
+            largestSpanCon = c
+    
+    # draw contour with largest span
+    if len(contours) > 0:
+        cv2.drawContours(outputFrame, [largestSpanCon], -1, 128, -1)
+
+    linePoints.append(largestSpanCon)
+    
+
+    ## Generate track points
+
+
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = bgSubMOG.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    
+    # to join non ball objects
+    mask = cv2.dilate(mask, kernel,iterations=4)
+    mask = cv2.erode(mask, kernel, iterations=4)
+
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    if len(contours) > 0:
+
+        possibleBallCons = []
+        for con in contours:
+            ((x, y), radius) = cv2.minEnclosingCircle(con)
+
+            if radius > 3 and radius < 10:
+                # add to list of possible balls
+                possibleBallCons.append(con)
+
+        if len(possibleBallCons) > 0:
+
+            # store the contour closest to the last known ball
+            found = False
+            closestCon = None
+            # theshold for minimum distance from last known ball - could be adapted to increase when number of frames since last detected
+            smallestDelta = 200
+            nextBall = (-1,-1)
+
+            lastX, lastY = lastSeenBall
+            
+            # calculate the center for each possible ball
+            for con in possibleBallCons:
+                M = cv2.moments(con)
+                x = int(M["m10"] / M["m00"]) 
+                y = int(M["m01"] / M["m00"])
+
+                delta = math.sqrt(((x - lastX)**2) + ((y - lastY)**2))
+
+                # keep track of closest ball to last known ball
+                if delta < smallestDelta or lastSeenBall == (-1,-1):
+                    smallestDelta = delta
+                    closestCon = con
+                    nextBall = (x,y)
+                    found = True
+            
+            if found:
+                # update the global last seen ball
+                lastSeenBall = nextBall
+
+                # draw ball cloest possbile contour (if found within a threshold)
+                ((x, y), radius) = cv2.minEnclosingCircle(closestCon)
+                cv2.circle(outputFrame, (int(x), int(y)), int(radius), 255, -1)
+
+                trackPoints.append((int(x), int(y), int(radius)))
+            else:
+                trackPoints.append((-1,-1,0))
+        else:
+            trackPoints.append((-1,-1,0))
+    else:
+        trackPoints.append((-1,-1,0))
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(outputFrame, "Collecting Data", (20,70), font, 2, 255, 2, cv2.LINE_AA)
+
+    return (outputFrame, bgSubMOG, trackPoints, lastSeenBall, linePoints)
+
+
+# uses input linear gradient to find when linear gradient changes
+def calcContactFrames(gradRatePoints, deltaPoints):
+    contactFrames = []
+
+    threshold = 0.08
+    contactIndex = -1
+    contactGradRate = 0
+
+    for i in range(len(gradRatePoints)):
+        gradRate = gradRatePoints[i]
+
+        if gradRate != None and contactGradRate == 0:
+            if gradRate > threshold:
+                contactIndex = i - 1 # -1 as in a frame is calculated from a point 2 frames previous
+                contactGradRate = gradRate
+
+    if contactGradRate != 0:
+        # estimate the number of contact frames based on change on trajectory at point of contact
+        if contactGradRate < 0.095:
+            contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1, contactIndex + 2]
+        elif contactGradRate >= 0.095 and contactGradRate < 0.14:
+            contactFrames = [contactIndex - 1, contactIndex, contactIndex + 1]
+        elif contactGradRate >= 0.14:
+            contactFrames = [contactIndex - 1, contactIndex]
+
+        # calculate speed before and after impact
+        if contactIndex - 11 < 0:
+            deltaBefore = stats.median(deltaPoints[0 : contactIndex - 1])
+        else:
+            deltaBefore = stats.median(deltaPoints[contactIndex - 11 : contactIndex - 1])
+
+        if contactIndex + 11 > len(deltaPoints) - 1:
+            deltaAfter = stats.median(deltaPoints[contactIndex + 1:])
+        else:
+            deltaAfter = stats.median(deltaPoints[contactIndex + 1: contactIndex + 11])
+
+        # compression is proportional to the loss of KE over time - more energy lost over shorter time = greater compression
+        compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)
+
+        # percentage of radius of ball in contact with the wall
+        contactPercent = ((compDistance + 20) / 60) * 100
+
+        maxContactPercent = 95
+        minContactPercent = 50
+
+        if contactPercent > maxContactPercent:
+            contactPercent = maxContactPercent
+        if contactPercent < minContactPercent:
+            contactPercent = minContactPercent
+
+        # calculate the ballContactPercent in each frame of contactFrames
+        if len(contactFrames) == 2:
+            contactPercents = [contactPercent, contactPercent * 0.75]
+        elif len(contactFrames) == 3:
+            contactPercents = [contactPercent * 0.5, contactPercent, contactPercent * 0.75]
+        elif len(contactFrames) == 4:
+            contactPercents = [contactPercent * 0.5, contactPercent, contactPercent * 0.75, contactPercent * 0.5]
+
+        # create a list of pairs (frame number, radius of ball in contact)
+        contactFrames = list(zip(contactFrames, contactPercents))
+
+    else:
+        contactFrames = []
+
+    return contactFrames
+
 
 # calculates the rate of gradient change of the line going into each point
 def calcPointRateGrad(gradPoints):

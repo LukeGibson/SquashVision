@@ -1,7 +1,7 @@
 import cv2
-import math
 import numpy as np
-import numba as nb
+import math
+import v10_postProcessing as post
 
 
 def decisionVid(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb, vidOp):
@@ -63,7 +63,7 @@ def decisionVid(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rat
     # Find if ball is out
     if frameIndex in [i[0] for i in contactFrames]:
         # calculate the probability the ball was out
-        probMask, newOutProb, maxValue = probOut(contactMask, lineMask)
+        probMask, newOutProb, maxValue = post.probOut(contactMask, lineMask)
 
         # update outProb if the new frame probability is larger
         if newOutProb > outProb:
@@ -143,115 +143,135 @@ def decisionVid(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rat
         cv2.putText(output, "Ball Center: ("+str(x)+", "+str(y)+")", (20,70), font, 2, (0,0,0), 2, cv2.LINE_AA)
         cv2.putText(output, "Ball Radius: "+str(r), (20,140), font, 2, (0,0,0), 2, cv2.LINE_AA)
 
+
     frameIndex += 1
     
     return (output, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb)
 
 
-# fast function to fill lineMask above the line
-@nb.jit
-def convertLineMask(lineMask):
-    for x in range(len(lineMask)):
-        col = lineMask[x]
-        lineMinY = -1
-
-        for y in range(len(col)):
-            # find the start of the line
-            if lineMask[x][-y] != 0:
-                lineMinY = y
-                break
-        
-        # add probabilities 
-        if lineMinY != -1:
-            under = [0] * (lineMinY - 3)
-            outer = [80] * 3
-            inner = [160] * 2
-            over = [240] * (len(col) - lineMinY - 2)
-
-            newCol = over + inner + outer + under
-            lineMask[x] = newCol
-
-    return lineMask
+def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
+    # generate output image
+    height, width = frame.shape[:2]
+    outputFrame = np.zeros((height,width), np.uint8)
 
 
-# given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
-def probOut(contactMask, lineMask):
-    # convert line mask and add probability
-    lineMask2 = cv2.transpose(lineMask)
-    lineMask2 = convertLineMask(lineMask2)
-    lineMask2 = cv2.transpose(lineMask2)
-
-    # add contactMask probability
-    kernelSmall = np.ones((3,3), np.uint8)
-    contactMaskInner = cv2.erode(contactMask, kernelSmall)
-    kernelLarge = np.ones((5,5), np.uint8)
-    contactMaskOuter = cv2.dilate(contactMask, kernelLarge)
-
-    contactOuterSize = np.count_nonzero(np.array(contactMaskOuter).flatten() == 255)
-    contactSize = np.count_nonzero(np.array(contactMask).flatten() == 255)
-
-    # check Inner maskis not dilated to nothing
-    contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
-    if contactInnerSize < 5:
-        contactMaskInner = contactMask
-        contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
-
-    # convert contactMasks values of 255 to 240
-    contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
-    contactMaskInner = cv2.addWeighted(contactMaskInner, (8/17), contactMaskInner, (8/17), 0)
-    contactMaskOuter = cv2.addWeighted(contactMaskOuter, (8/17), contactMaskOuter, (8/17), 0)
-
-    # sum together the component contactMask's
-    contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
-    contactMask2 = cv2.addWeighted(contactMask2, (2/3), contactMask, (1/3), 0)
-
-    probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
+    ## Generate line points
 
 
-    # use masks to calculate the probability the shot was out
-    probMaskFlat = np.array(probMask).flatten()
-    maxValue = max(probMaskFlat)
-    maxCount = np.count_nonzero(probMaskFlat == maxValue)
+    # threshold on red color
+    lowColor = (0,0,75)
+    highColor = (50,50,135)
+    mask = cv2.inRange(frame, lowColor, highColor)
 
-    # calculates the min and max probabilty depending on the max value in the probMask
-    # set largest number of contact pixels that could create maxValue
-    if maxValue <= 120:
-        thresholdA = 0
-        thresholdB = 0
-        trueContactSize = 0
-    elif maxValue <= 160:
-        thresholdA = 0
-        thresholdB = 0.66
-        trueContactSize = contactOuterSize - contactSize
-    elif maxValue <= 200:
-        thresholdA = 0.66
-        thresholdB = 0.83
-        trueContactSize = contactSize - contactInnerSize
-    elif maxValue <= 240:
-        thresholdA = 0.83
-        thresholdB = 1
-        trueContactSize = contactInnerSize
+    kernel = np.ones((7,7), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # to join line contours objects
+    mask = cv2.dilate(mask, kernel,iterations=4)
+    mask = cv2.erode(mask, kernel, iterations=4)
+
+    # get contours
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours) == 2:
+        contours = contours[0]
     else:
-        print("Prob Calc Error: maxValue > 240")
-        thresholdA = -1
-        thresholdB = -1    
+        contours = contours[1]
+    
+    largestSpan = 0
+    largestSpanCon = None
+    
+    # find contour with largest horizontail span - a feature of the outliney
+    for c in contours:
+        leftmost = (c[c[:,:,0].argmin()][0])[0]
+        rightmost = (c[c[:,:,0].argmax()][0])[0]
+        span = abs(leftmost - rightmost)
 
-    # only calculate the probabilty if thesholdB > 0
-    if thresholdB > 0:
+        if span > largestSpan:
+            largestSpan = span
+            largestSpanCon = c
+    
+    # draw contour with largest span
+    if len(contours) > 0:
+        cv2.drawContours(outputFrame, [largestSpanCon], -1, 128, -1)
 
-        # error check
-        if maxCount > trueContactSize:
-            trueContactSize = maxCount
+    linePoints.append(largestSpanCon)
+    
 
-        # the amount probabilty can vary between min and max
-        difference = thresholdB - thresholdA
+    ## Generate track points
 
-        # calculate percentage of inner pixels that are at this max value
-        proprotionMaxContact =  maxCount / trueContactSize
 
-        # probabilty is closer to thresholdB the greater proportion of the pixels were at the max value
-        probability = round(thresholdA + (difference * proprotionMaxContact), 2)
+    # blur and convert to grayscale
+    frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
+
+    # Create binary mask using subtractor
+    mask = bgSubMOG.apply(frameGray)
+
+    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    
+    # to join non ball objects
+    mask = cv2.dilate(mask, kernel,iterations=4)
+    mask = cv2.erode(mask, kernel, iterations=4)
+
+    # find contours
+    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    if len(contours) > 0:
+
+        possibleBallCons = []
+        for con in contours:
+            ((x, y), radius) = cv2.minEnclosingCircle(con)
+
+            if radius > 3 and radius < 10:
+                # add to list of possible balls
+                possibleBallCons.append(con)
+
+        if len(possibleBallCons) > 0:
+
+            # store the contour closest to the last known ball
+            found = False
+            closestCon = None
+            # theshold for minimum distance from last known ball - could be adapted to increase when number of frames since last detected
+            smallestDelta = 200
+            nextBall = (-1,-1)
+
+            lastX, lastY = lastSeenBall
+            
+            # calculate the center for each possible ball
+            for con in possibleBallCons:
+                M = cv2.moments(con)
+                x = int(M["m10"] / M["m00"]) 
+                y = int(M["m01"] / M["m00"])
+
+                delta = math.sqrt(((x - lastX)**2) + ((y - lastY)**2))
+
+                # keep track of closest ball to last known ball
+                if delta < smallestDelta or lastSeenBall == (-1,-1):
+                    smallestDelta = delta
+                    closestCon = con
+                    nextBall = (x,y)
+                    found = True
+            
+            if found:
+                # update the global last seen ball
+                lastSeenBall = nextBall
+
+                # draw ball cloest possbile contour (if found within a threshold)
+                ((x, y), radius) = cv2.minEnclosingCircle(closestCon)
+                cv2.circle(outputFrame, (int(x), int(y)), int(radius), 255, -1)
+
+                trackPoints.append((int(x), int(y), int(radius)))
+            else:
+                trackPoints.append((-1,-1,0))
+        else:
+            trackPoints.append((-1,-1,0))
     else:
-        probability = 0
+        trackPoints.append((-1,-1,0))
 
-    return (probMask, probability, maxValue)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(outputFrame, "Collecting Data", (20,70), font, 2, 255, 2, cv2.LINE_AA)
+
+    return (outputFrame, bgSubMOG, trackPoints, lastSeenBall, linePoints)
