@@ -15,7 +15,6 @@ def collectData(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
     :param trackPoints: the list of each frames detected ball center and radius
     :param lastSeenBall: the (x,y) coordinates of the centre of the ball in the last frame
     :param linePoints: the list of each frames line contour object
-
     :returns: the operated image and updated video data
     '''
     # generate output image base
@@ -72,7 +71,7 @@ def collectData(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
     mask = cv2.erode(mask, kernel, iterations=4)
 
     # find contours in the foreground mask and filter to find ball contour
-    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
     if len(contours) > 0:
 
         # filter using a min/max ball radius
@@ -359,8 +358,8 @@ def fillTrackGaps(trackPoints):
 
     for i in range(1, len(trackPoints) - 1):
         x, y, r = trackPoints[i]
-        pX = trackPoints[i - 1][:2]
-        nX = trackPoints[i + 1][:2]
+        pX = trackPoints[i - 1][0]
+        nX = trackPoints[i + 1][0]
 
         # adds missing points to gap
         if x < 0:

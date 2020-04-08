@@ -5,21 +5,36 @@ import numba as nb
 
 
 def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb, vidOp):
-    # get frame dimensions
+    '''
+    Calculates the contact imprint mask at the time of the given frame index.
+    Uses contact mask and line mask to calculate the probability the ball was out.
+    Displays differnt operated image depening on operation selected by the user.
+
+    :param frame: 
+    :param trackPoints: the list of each frames detected ball center and radius
+    :param trackPredPoints: the list of each frames predicted ball center and radius
+    :param linePoints: the list of each frames line contour object
+    :param gradPoints: the list of the gradient of the balls flight in each frame
+    :param rateGradPoints: the list of the rate of change of gradient of the balls flight in each frame
+    :param deltaPoints: the list of the stright line distance between current and last frames ball centre
+    :param frameIndex: the current frame number of playback
+    :param contactFrames: the list of pairs of (frame number, radius percentage of contact) where the ball contacts the wall
+    :param contactPrints: the list of ball imprint masks
+    :param outProb: the probability the ball was out 
+    :param vidOp: the output option the user has selected
+    :returns: the operated image and updated video data
+    '''
+    # generate output image base
     height, width = frame.shape[:2]
 
-    # get frame line and ball data
     ballData = trackPredPoints[frameIndex]
     lineData = linePoints[frameIndex]
 
-
-    # if frame is in contact add print to to contactPrints
+    # calculate current frames ball imprint mask if in a contact frame
     if frameIndex in [i[0] for i in contactFrames]:
         ballContact = True
-        # get contactFrame data
         radiusPercent = contactFrames[[i[0] for i in contactFrames].index(frameIndex)][1]
 
-        # create then contactPrint mask
         ballCenter = ballData[:2]
         ballRadius = ballData[2]
         ballPrintRadius = int(math.ceil(ballRadius * (radiusPercent / 100)))
@@ -35,7 +50,6 @@ def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rate
     else:
         ballContact = False
     
-
     # sum accumulated print masks to create the contactMask
     contactMask = np.zeros((height, width), np.uint8)
     contactMaskCol = np.zeros((height, width, 3), np.uint8)
@@ -44,28 +58,22 @@ def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rate
         contactMask = cv2.add(mask, contactMask)
         contactMaskCol = cv2.add(colMask, contactMaskCol)
     
-    # join up indevidual prints into a single print
     kernel = np.ones((7,7), np.uint8)
     contactMask = cv2.dilate(contactMask, kernel, iterations=2)
     contactMask = cv2.erode(contactMask, kernel, iterations=2)
     contactMaskCol = cv2.dilate(contactMaskCol, kernel, iterations=2)
     contactMaskCol = cv2.erode(contactMaskCol, kernel, iterations=2)
 
-    # create line mask
+    # create line and ball masks
     lineMask = np.zeros((height, width), np.uint8)
     cv2.drawContours(lineMask, [lineData], -1, 255, 1)
-
-    # create the ball mask
     ballMask = np.zeros((height, width), np.uint8)
     cv2.circle(ballMask, ballData[:2], ballData[2], 255, 1)
 
-
-    # Find if ball is out
+    # calculate ball is out probability if in a contact frame
     if frameIndex in [i[0] for i in contactFrames]:
-        # calculate the probability the ball was out
         probMask, newOutProb, maxValue = probOut(contactMask, lineMask)
 
-        # update outProb if the new frame probability is larger
         if newOutProb > outProb:
             outProb = newOutProb
     else:
@@ -79,12 +87,10 @@ def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rate
     ballMaskCol = np.zeros((height, width, 3), np.uint8)
     cv2.circle(ballMaskCol, ballData[:2], ballData[2], (0,255,0), 1)
 
-    # write text on output
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-    # Set output depending on current selected operation
+    # set output depending on current selected operation
     if vidOp == "Make Decision":
-        # add colered masks together
         output = cv2.add(ballMaskCol, lineMaskCol)
         output = cv2.add(output, contactMaskCol, 1)
 
@@ -105,6 +111,7 @@ def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rate
     elif vidOp == "Ball Trajectory":
         output = ballMaskCol
 
+        # draw a line between every ball centre up to current frame
         for i in range(1, frameIndex):
             point1 = trackPredPoints[i]
             point2 = trackPredPoints[i-1]
@@ -148,9 +155,15 @@ def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rate
     return (output, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb)
 
 
-# fast function to fill lineMask above the line
 @nb.jit
 def convertLineMask(lineMask):
+    '''
+    Converts the oiginal line mask so that the pixel value represents the probability the pixel is above the outline.
+    Uses numba jit notation for more efficent nested looping of mask pixels.
+
+    :param lineMask: the mask containing just the line contour
+    :returns: line mask adapted to hold out area probability
+    '''
     for x in range(len(lineMask)):
         col = lineMask[x]
         lineMinY = -1
@@ -176,12 +189,21 @@ def convertLineMask(lineMask):
 
 # given the 2 masks sums them to find values of contact - allows for probability of out to be calculated
 def probOut(contactMask, lineMask):
-    # convert line mask and add probability
+    '''
+    Adds probability of detection to the line and contact masks and sum's them together.
+    Calculates probability the ball is out by detecting overlap pixel value between line and contact masks.
+    Uses ratio of pixels at overlap value to determin finner graularity of probability the ball is out.
+
+    :params contactMask: the imprint mask the ball has made on the wall 
+    :params lineMask: the line mask
+    :returns: a tuple of the summed probability and line masks, probability the ball is out and max value in the probability mask
+    '''
+    # convert line mask and add probability pixel values
     lineMask2 = cv2.transpose(lineMask)
     lineMask2 = convertLineMask(lineMask2)
     lineMask2 = cv2.transpose(lineMask2)
 
-    # add contactMask probability
+    # add contact mask probability pixel values
     kernelSmall = np.ones((3,3), np.uint8)
     contactMaskInner = cv2.erode(contactMask, kernelSmall)
     kernelLarge = np.ones((5,5), np.uint8)
@@ -190,31 +212,28 @@ def probOut(contactMask, lineMask):
     contactOuterSize = np.count_nonzero(np.array(contactMaskOuter).flatten() == 255)
     contactSize = np.count_nonzero(np.array(contactMask).flatten() == 255)
 
-    # check Inner maskis not dilated to nothing
+    # check inner mask is not dilated too much
     contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
     if contactInnerSize < 5:
         contactMaskInner = contactMask
         contactInnerSize = np.count_nonzero(np.array(contactMaskInner).flatten() == 255)
 
-    # convert contactMasks values of 255 to 240
+    # convert contact masks values of 255 to 240
     contactMask = cv2.addWeighted(contactMask, (8/17), contactMask, (8/17), 0)
     contactMaskInner = cv2.addWeighted(contactMaskInner, (8/17), contactMaskInner, (8/17), 0)
     contactMaskOuter = cv2.addWeighted(contactMaskOuter, (8/17), contactMaskOuter, (8/17), 0)
 
-    # sum together the component contactMask's
+    # sum together the component contact mask's and line mask
     contactMask2 = cv2.addWeighted(contactMaskOuter, 0.5, contactMaskInner, 0.5, 0)
     contactMask2 = cv2.addWeighted(contactMask2, (2/3), contactMask, (1/3), 0)
 
     probMask = cv2.addWeighted(lineMask2, 0.5, contactMask2, 0.5, 0)
 
-
-    # use masks to calculate the probability the shot was out
+    # use max value and number of pixels equal to it in probability mask to set probability out thresholds
     probMaskFlat = np.array(probMask).flatten()
     maxValue = max(probMaskFlat)
     maxCount = np.count_nonzero(probMaskFlat == maxValue)
 
-    # calculates the min and max probabilty depending on the max value in the probMask
-    # set largest number of contact pixels that could create maxValue
     if maxValue <= 120:
         thresholdA = 0
         thresholdB = 0
@@ -236,10 +255,8 @@ def probOut(contactMask, lineMask):
         thresholdA = -1
         thresholdB = -1    
 
-    # only calculate the probabilty if thesholdB > 0
+    # calculate probability
     if thresholdB > 0:
-
-        # error check
         if maxCount > trueContactSize:
             trueContactSize = maxCount
 
