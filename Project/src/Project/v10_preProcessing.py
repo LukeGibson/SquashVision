@@ -4,39 +4,47 @@ import numpy as np
 import statistics as stats
 
 
-def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
-    # generate output image
+def collectData(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
+    '''
+    Uses colour thresholding to find the outline contour in the provided frame.
+    Uses foreground extraction to find the ball contour in the provided frame.
+    Updates video data stores with detected object data.
+
+    :param frame: the current video frame to collect data from
+    :param bgSubMOG: the current open cv background subtractor object
+    :param trackPoints: the list of each frames detected ball center and radius
+    :param lastSeenBall: the (x,y) coordinates of the centre of the ball in the last frame
+    :param linePoints: the list of each frames line contour object
+
+    :returns: the operated image and updated video data
+    '''
+    # generate output image base
     height, width = frame.shape[:2]
     outputFrame = np.zeros((height,width), np.uint8)
 
-
-    ## Generate line points
-
-
-    # threshold on red color
+    # threshold on the lines red color
     lowColor = (0,0,75)
     highColor = (50,50,135)
     mask = cv2.inRange(frame, lowColor, highColor)
 
+    # remove noise and join line segments
     kernel = np.ones((7,7), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    # to join line contours objects
     mask = cv2.dilate(mask, kernel,iterations=4)
     mask = cv2.erode(mask, kernel, iterations=4)
 
-    # get contours
+    # retrive the threshold mask contours
     contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if len(contours) == 2:
         contours = contours[0]
     else:
         contours = contours[1]
-    
+
+    # find contour with largest horizontail span indicating the outlines contour
     largestSpan = 0
     largestSpanCon = None
     
-    # find contour with largest horizontail span - a feature of the outliney
     for c in contours:
         leftmost = (c[c[:,:,0].argmin()][0])[0]
         rightmost = (c[c[:,:,0].argmax()][0])[0]
@@ -46,56 +54,44 @@ def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
             largestSpan = span
             largestSpanCon = c
     
-    # draw contour with largest span
-    if len(contours) > 0:
-        cv2.drawContours(outputFrame, [largestSpanCon], -1, 128, -1)
-
     linePoints.append(largestSpanCon)
     
-
-    ## Generate track points
-
-
-    # blur and convert to grayscale
+    # draw outline contour on output image
+    if len(contours) > 0:
+        cv2.drawContours(outputFrame, [largestSpanCon], -1, 128, -1)
+    
+    # blur and convert frame to grayscale
     frameBlurred = cv2.GaussianBlur(frame, (11, 11), 0)
     frameGray = cv2.cvtColor(frameBlurred, cv2.COLOR_BGR2GRAY)
 
-    # Create binary mask using subtractor
+    # create foreground mask and remove noise and join non-ball objects
     mask = bgSubMOG.apply(frameGray)
-
-    # Perform morphological opening (erosion followed by dilation) - to remove noise from mask
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    
-    # to join non ball objects
     mask = cv2.dilate(mask, kernel,iterations=4)
     mask = cv2.erode(mask, kernel, iterations=4)
 
-    # find contours
-    im2, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-
+    # find contours in the foreground mask and filter to find ball contour
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if len(contours) > 0:
 
+        # filter using a min/max ball radius
         possibleBallCons = []
         for con in contours:
             ((x, y), radius) = cv2.minEnclosingCircle(con)
-
             if radius > 3 and radius < 10:
-                # add to list of possible balls
                 possibleBallCons.append(con)
 
+        # find the contour closest to the last known ball
         if len(possibleBallCons) > 0:
-
-            # store the contour closest to the last known ball
             found = False
             closestCon = None
-            # theshold for minimum distance from last known ball - could be adapted to increase when number of frames since last detected
             smallestDelta = 200
             nextBall = (-1,-1)
 
             lastX, lastY = lastSeenBall
             
-            # calculate the center for each possible ball
+            # calculate the centre for each possible ball contour
             for con in possibleBallCons:
                 M = cv2.moments(con)
                 x = int(M["m10"] / M["m00"]) 
@@ -103,22 +99,21 @@ def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
 
                 delta = math.sqrt(((x - lastX)**2) + ((y - lastY)**2))
 
-                # keep track of closest ball to last known ball
                 if delta < smallestDelta or lastSeenBall == (-1,-1):
                     smallestDelta = delta
                     closestCon = con
                     nextBall = (x,y)
                     found = True
             
+            # draw ball contour if contour found within distance limit
             if found:
-                # update the global last seen ball
                 lastSeenBall = nextBall
 
-                # draw ball cloest possbile contour (if found within a threshold)
                 ((x, y), radius) = cv2.minEnclosingCircle(closestCon)
                 cv2.circle(outputFrame, (int(x), int(y)), int(radius), 255, -1)
-
                 trackPoints.append((int(x), int(y), int(radius)))
+
+            # use 'not detected' dummy data if ball contour not found
             else:
                 trackPoints.append((-1,-1,0))
         else:
@@ -132,20 +127,28 @@ def generateTrackVid(frame, bgSubMOG, trackPoints, lastSeenBall, linePoints):
     return (outputFrame, bgSubMOG, trackPoints, lastSeenBall, linePoints)
 
 
-# uses input linear gradient to find when linear gradient changes
 def calcContactFrames(gradRatePoints, deltaPoints):
-    contactFrames = []
+    '''
+    Caclulates the frame numbers of the the video where the ball makes contact with the wall.
+    Also calculates the percentage of the balls radius is in contact with the wall for each frame of contact.
 
+    :params gradRatePoints: the list of the rate of change of gradient of the balls flight in each frame
+    :params deltaPoints: the list of the stright line distance between current and last frames ball centre
+    :returns: the list of pairs of (frame number, radius percentage of contact) where the ball contacts the wall
+    '''
+    # initalise variables in case no contact is detected
+    contactFrames = []
     threshold = 0.08
     contactIndex = -1
     contactGradRate = 0
 
+    # find position when contact happened as point at which gradient rate exceeds a threshold
     for i in range(len(gradRatePoints)):
         gradRate = gradRatePoints[i]
 
         if gradRate != None and contactGradRate == 0:
             if gradRate > threshold:
-                contactIndex = i - 1 # -1 as in a frame is calculated from a point 2 frames previous
+                contactIndex = i - 1
                 contactGradRate = gradRate
 
     if contactGradRate != 0:
@@ -157,7 +160,7 @@ def calcContactFrames(gradRatePoints, deltaPoints):
         elif contactGradRate >= 0.14:
             contactFrames = [contactIndex - 1, contactIndex]
 
-        # calculate speed before and after impact
+        # calculate average ball speed before and after contact
         if contactIndex - 11 < 0:
             deltaBefore = stats.median(deltaPoints[0 : contactIndex - 1])
         else:
@@ -168,21 +171,18 @@ def calcContactFrames(gradRatePoints, deltaPoints):
         else:
             deltaAfter = stats.median(deltaPoints[contactIndex + 1: contactIndex + 11])
 
-        # compression is proportional to the loss of KE over time - more energy lost over shorter time = greater compression
+        # estimate percentage of radius of ball in contact with the wall within set thresholds
         compDistance = (((deltaBefore**2) - (deltaAfter**2)) * (1 + contactGradRate)) / len(contactFrames)
-
-        # percentage of radius of ball in contact with the wall
         contactPercent = ((compDistance + 20) / 60) * 100
 
         maxContactPercent = 95
         minContactPercent = 50
-
         if contactPercent > maxContactPercent:
             contactPercent = maxContactPercent
         if contactPercent < minContactPercent:
             contactPercent = minContactPercent
 
-        # calculate the ballContactPercent in each frame of contactFrames
+        # set ball contact percentage in each frame of contact frames
         if len(contactFrames) == 2:
             contactPercents = [contactPercent, contactPercent * 0.75]
         elif len(contactFrames) == 3:
@@ -192,15 +192,19 @@ def calcContactFrames(gradRatePoints, deltaPoints):
 
         # create a list of pairs (frame number, radius of ball in contact)
         contactFrames = list(zip(contactFrames, contactPercents))
-
     else:
         contactFrames = []
 
     return contactFrames
 
 
-# calculates the rate of gradient change of the line going into each point
 def calcPointRateGrad(gradPoints):
+    '''
+    Calculate the rate at which the gradient of the ball is changing in each frame.
+
+    :param gradPoints: the list of the gradient of the balls flight in each frame
+    :returns: the list of the rate of change of gradient of the balls flight in each frame
+    '''
     rateGradPoints = []
 
     rateGradPoints.append(None)
@@ -218,8 +222,13 @@ def calcPointRateGrad(gradPoints):
     return rateGradPoints
 
 
-# calculates the gradient of the line going into each point
 def calcPointGrad(predPoints):
+    '''
+    Calculate the gradient of the balls trajectory in each frame.
+
+    :param predPoints: the list of each frames predicted ball center and radius
+    :returns: the list of the gradient of the balls flight in each frame
+    '''
     gradPoints = []
 
     gradPoints.append(None)
@@ -230,7 +239,7 @@ def calcPointGrad(predPoints):
         prevX, prevY = predPoints[i-3][:2]
         currX, currY = predPoints[i][:2]
 
-        # check for divide by 0 error and that both points are of detected balls
+        # check for divide by 0 error and that both frames are of detected balls
         if (currX - prevX) != 0 and prevX != -1 and currX != -1:
             m = (currY - prevY)/(currX - prevX)
             gradPoints.append(m)
@@ -240,11 +249,14 @@ def calcPointGrad(predPoints):
     return gradPoints
 
 
-# calculate delta points
 def calcDeltaPoints(predPoints):
-    deltaPoints = []
+    '''
+    Calculate the 'speed' of the ball in each frame.
 
-    # first change must be 0
+    :param predPoints: the list of each frames predicted ball center and radius
+    :returns: the list of the stright line distance between current and last frames ball centre
+    '''
+    deltaPoints = []
     deltaPoints.append(0)
 
     for i in range(1, len(predPoints)):
@@ -253,7 +265,7 @@ def calcDeltaPoints(predPoints):
 
         delta = round(math.sqrt(((currX - prevX)**2) + ((currY - prevY)**2)), 3)
 
-        # if delta is 0 its because frame was repeated - use last frames delta
+        # if delta is 0 its because frame was repeated so use last frames delta
         if delta == 0 or prevX == -1:
             delta = deltaPoints[i-1]
 
@@ -262,10 +274,14 @@ def calcDeltaPoints(predPoints):
     return deltaPoints
 
 
-# remove noise from list
 def removeListNoise(myList):
-    roundedList = []
+    '''
+    Averages each item in the list with its two neighbours 'smoothing' its values.
 
+    :param myList: the list of numbers
+    :returns: the input list with noise removed
+    '''
+    roundedList = []
     roundedList.append(myList[0])
 
     for i in range(1, len(myList) - 1):
@@ -293,8 +309,17 @@ def removeListNoise(myList):
     return roundedList
 
 
-# expand the track gaps as ball will distort line detection when half over and overwrite the linePoints
 def expandTrackGaps(trackPoints, linePoints):
+    '''
+    If the ball is not detected in either of a frames neighbouring frames set the ball as not detected in this frame too.
+    This is because the ball will only be half detected as it is partially occluded by the line.
+    Overwrite the detected line contour for these frames with previous line contour due to the balls occlison distorting colour thresholding.
+
+    :param trackPoints: the list of each frames detected ball center and radius
+    :param linePoints: the list of each frames line contour object
+    :returns: the pair of input lists with their missing value gaps expanded
+    '''
+    # initalise the new line and track data lists
     cleanTrackPoints = []
     cleanTrackPoints.append(trackPoints[0])
     cleanTrackPoints.append(trackPoints[0])
@@ -322,50 +347,52 @@ def expandTrackGaps(trackPoints, linePoints):
 
 
 def fillTrackGaps(trackPoints):
-    # find all sections with a missing point
+    '''
+    Predicts the ball centre and radius when its been detected originally using linear extrapolation.
+
+    :param trackPoints: the list of each frames detected ball center and radius
+    :returns: the list of each frames predicted ball center and radius
+    '''
+    # find the gaps of ball detection
     missingSections = [[]]
     sectionCount = 0
 
     for i in range(1, len(trackPoints) - 1):
         x, y, r = trackPoints[i]
-        pX, pY, pR = trackPoints[i - 1]
-        nX, nY, nR = trackPoints[i + 1]
+        pX = trackPoints[i - 1][:2]
+        nX = trackPoints[i + 1][:2]
 
-        # adds missing points to section
+        # adds missing points to gap
         if x < 0:
             missingSections[sectionCount].append((x,y,r,i))
-        # adds real value far to end of section and increments section count
+        # adds real value far to end of gap and increments section count
         elif pX < 0:
             missingSections[sectionCount].append((x,y,r,i))
             sectionCount += 1
-        # adds real value at start of section
+        # adds real value at start of gap
         elif nX < 0:
             missingSections.append([])
             missingSections[sectionCount].append((x,y,r,i))
     
-    # predict values for points in the missing sections
+    # predict ball centre and radius in the missing sections, excluding the first points where ball has not yet been found
     for section in missingSections:
-        # excludes the first points where ball hasn't been found yet
         if section[0][0] != -1 and section[-1][0] != -1:
 
-            startX, startY, startR, startPos = section[0]
-            endX, endY, endR, endPos = section[-1]
+            startX, startY, startR = section[0][:3]
+            endX, endY, endR = section[-1][:3]
             numMissing = len(section) - 2
 
             xStep = (endX - startX) / (numMissing + 1)
             yStep = (endY - startY) / (numMissing + 1)
 
-            # setting missing point radius as the largest of start and end radius
             missingR = max(startR, endR)
             
-            # calculate ball position at even spacing for missing values (assumes a stright line)
             for i in range(1, len(section) - 1):
                 pos = section[i][3]
                 missingX = int(startX + (i * xStep))
                 missingY = int(startY + (i * yStep))
                 section[i] = (missingX, missingY, missingR)
                 
-                # rewrite missing point in full list
                 trackPoints[pos] = section[i]
                       
     return trackPoints

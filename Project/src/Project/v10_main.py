@@ -242,11 +242,11 @@ def playVideo(currCapture, bgSubMOG, lastSeenBall, trackPoints, trackPredPoints,
         else:
             # get the operated image and updated video data
             if stage == 0:
-                operatedImage, bgSubMOG, trackPoints, lastSeenBall, linePoints = pre.generateTrackVid(
+                operatedImage, bgSubMOG, trackPoints, lastSeenBall, linePoints = pre.collectData(
                     frame, bgSubMOG, trackPoints, lastSeenBall, linePoints)
             if stage == 1:
                 vidOp = currVidOp.get()
-                operatedImage, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb = post.decisionVid(
+                operatedImage, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb = post.showResult(
                     frame, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb, vidOp)
             
 

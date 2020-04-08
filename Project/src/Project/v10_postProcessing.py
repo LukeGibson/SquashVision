@@ -4,7 +4,7 @@ import numpy as np
 import numba as nb
 
 
-def decisionVid(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb, vidOp):
+def showResult(frame, trackPoints, trackPredPoints, linePoints, gradPoints, rateGradPoints, deltaPoints, frameIndex, contactFrames, contactPrints, outProb, vidOp):
     # get frame dimensions
     height, width = frame.shape[:2]
 
