@@ -1,9 +1,9 @@
-'''
-Squash Vision v1.10.0
-
-2020 Luke Gibson, Southampton, England
-lg1n17@soton.ac.uk
-'''
+# ------------------------------------------------------
+#  Squash Vision v1.10.0
+#
+#  2020 Luke Gibson, Southampton, England
+#  lg1n17@soton.ac.uk
+# ------------------------------------------------------
 
 from tkinter import filedialog
 from PIL import Image, ImageTk
