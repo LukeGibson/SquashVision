@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from random import randint
+import time
 
 
 # returns the contact frames for a given path
@@ -68,7 +69,12 @@ def getOutProb(clipPath):
                     largestSpan = span
                     largestSpanCon = c
 
-            linePoints.append(largestSpanCon)
+            # check the line was not broken
+            if largestSpan < (0.8 * 1920) and len(linePoints) > 0:
+                repeatCon = linePoints[-1]
+                linePoints.append(repeatCon)
+            else:
+                linePoints.append(largestSpanCon)
 
 
             # FIND TRACK POINTS
@@ -485,7 +491,7 @@ def compearResult(testName, collections):
     plt.xticks(xPoints)    
     plt.yticks([50,55,60,65,70,75,80,85,90,95,100])
 
-    plt.show()
+    # plt.show()
     fig.savefig('C:\\Users\\Luke\\Documents\\Google Drive\\University\\A Part III Project\\SquashVision\\Project\\TestResults\\DecisionTests\\' + testName + '\\' + testName + '_accuracy.png', dpi=fig.dpi)
 
 
@@ -504,11 +510,19 @@ collections = [
     "tight_angle"
 ]
 
-test = "test2"
+test = "test4"
 
 # genTruth(collections)
+
+timeA = time.time()
 
 for col in collections:
     genCollectionResults(col, test)
 
 compearResult(test, collections)
+
+timeB = time.time()
+total = timeB - timeA
+
+print("Total time:", total)
+print("Average time:", total/74)

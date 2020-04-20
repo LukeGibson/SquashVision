@@ -1,0 +1,11 @@
+TEST 11 - with line misdetection last frame overwrite
+    number of frames decided by how much over the threshold the gradRate was
+    < 0.095: [-1, 0, +1, +2]
+    >= 0.095 and < 0.14: [-1, 0, +1]
+    >= 0.14: [-1, 0]
+
+
+Gradient from point 3 frames before to current 
+Noise removed from gradient points – averaged with 2 neighbours
+Rate of Gradient change from previous point calculated
+First Rate of Gradient change > 0.08 = 1 frames before contact point

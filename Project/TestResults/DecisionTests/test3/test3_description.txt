@@ -1,0 +1,11 @@
+Bug fix - Line detection error no longer chopping end of outline
+
+Thresholds -
+	120: 0, 0, 0
+	160: 0, 0.66, contactOuterSize - contactSize
+	200: 0.66, 0.83, contactSize - contactInnerSize
+	240: 0.83, 1, contactInnerSize
+
+difference = thresholdB - thresholdA
+proprotionMaxContact =  maxCount / trueContactSize
+probability = thresholdA + (difference * proprotionMaxContact)
